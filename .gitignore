@@ -1,2 +1,8 @@
 .worktrees/
 .env
+node_modules/
+.next/
+__pycache__/
+*.pyc
+bin/
+obj/
