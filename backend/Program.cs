@@ -65,7 +65,8 @@ builder.Services.AddRateLimiter(options =>
 });
 
 // ── Health checks ───────────────────────────────────────────────────────────
-builder.Services.AddHealthChecks();
+builder.Services.AddHealthChecks()
+    .AddNpgsql(connectionString ?? string.Empty, name: "postgres");
 
 var app = builder.Build();
 
