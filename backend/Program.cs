@@ -69,6 +69,19 @@ builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
+// ── Database: apply pending migrations and seed on startup ─────────────────
+using (var scope = app.Services.CreateScope())
+{
+    var db     = scope.ServiceProvider.GetRequiredService<OcrDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    logger.LogInformation("Applying database migrations...");
+    db.Database.Migrate();
+    logger.LogInformation("Migrations applied. Running seed check...");
+    SeedData.Initialize(db);
+    logger.LogInformation("Seed check complete.");
+}
+
 // ── Middleware pipeline ─────────────────────────────────────────────────────
 if (app.Environment.IsDevelopment())
 {
