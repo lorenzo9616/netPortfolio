@@ -1,6 +1,6 @@
-Run: dotnet ef migrations add InitialCreate
-     dotnet ef database update
-These are executed via the docker-compose entrypoint in production.
+Migrations are applied automatically at backend startup via Database.Migrate() in Program.cs.
 
-# Session 6
-Session 6 adds AnalysisResults and SavedFields tables — run dotnet ef migrations add AddAnalysisResults
+To add a new migration after changing a model:
+  dotnet ef migrations add YourMigrationName --project backend/
+
+Commit the generated .cs files alongside your model changes.

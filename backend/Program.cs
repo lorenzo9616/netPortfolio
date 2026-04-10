@@ -75,11 +75,19 @@ using (var scope = app.Services.CreateScope())
     var db     = scope.ServiceProvider.GetRequiredService<OcrDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-    logger.LogInformation("Applying database migrations...");
-    db.Database.Migrate();
-    logger.LogInformation("Migrations applied. Running seed check...");
-    SeedData.Initialize(db);
-    logger.LogInformation("Seed check complete.");
+    try
+    {
+        logger.LogInformation("Applying database migrations...");
+        db.Database.Migrate();
+        logger.LogInformation("Migrations applied. Running seed check...");
+        SeedData.Initialize(db);
+        logger.LogInformation("Seed check complete.");
+    }
+    catch (Exception ex)
+    {
+        logger.LogCritical(ex, "Database startup failed. The application will now exit.");
+        throw;
+    }
 }
 
 // ── Middleware pipeline ─────────────────────────────────────────────────────
