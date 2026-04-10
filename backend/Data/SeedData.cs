@@ -9,6 +9,11 @@ namespace OcrApi.Data;
 /// </summary>
 public static class SeedData
 {
+    /// <summary>
+    /// Seeds one sample <see cref="AnalysisResult"/> if the table is empty.
+    /// No-op when at least one row already exists.
+    /// </summary>
+    /// <param name="db">An open <see cref="OcrDbContext"/> with pending migrations applied.</param>
     public static void Initialize(OcrDbContext db)
     {
         if (db.AnalysisResults.Any())
