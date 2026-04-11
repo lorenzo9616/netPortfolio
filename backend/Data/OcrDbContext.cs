@@ -58,6 +58,8 @@ public class OcrDbContext : DbContext
                   .WithOne(f => f.AnalysisResult)
                   .HasForeignKey(f => f.AnalysisResultId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(e => e.PageCount).HasDefaultValue(1);
         });
 
         // ── SavedField ────────────────────────────────────────────────────────

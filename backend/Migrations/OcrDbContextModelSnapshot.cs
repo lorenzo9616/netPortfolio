@@ -40,7 +40,9 @@ partial class OcrDbContextModelSnapshot : ModelSnapshot
                 .HasColumnType("character varying(255)");
 
             b.Property<int>("PageCount")
-                .HasColumnType("integer");
+                .ValueGeneratedOnAdd()
+                .HasColumnType("integer")
+                .HasDefaultValue(1);
 
             b.Property<string>("RawText")
                 .HasColumnType("text");

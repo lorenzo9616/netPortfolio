@@ -5,7 +5,7 @@ public class AnalysisResult
     public int Id { get; set; }
     public DateTime AnalyzedAt { get; set; } = DateTime.UtcNow;
     public string FileName { get; set; } = string.Empty;
-    public string RawText { get; set; } = string.Empty;
+    public string? RawText { get; set; }
     public int PageCount { get; set; } = 1;
     public List<SavedField> Fields { get; set; } = new();
 }
