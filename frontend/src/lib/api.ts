@@ -8,6 +8,7 @@ import type {
   ExtractedField,
   AnalysisResultDetail,
 } from '@/types/ocr';
+import { getToken } from './auth';
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
@@ -45,9 +46,15 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+function authHeaders(): HeadersInit {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function getProperties(): Promise<OcrProperty[]> {
   const res = await fetch(`${API_BASE}/api/ocrproperties`, {
     cache: 'no-store',
+    headers: { ...authHeaders() },
   });
   return handleResponse<OcrProperty[]>(res);
 }
@@ -57,7 +64,7 @@ export async function createProperty(
 ): Promise<OcrProperty> {
   const res = await fetch(`${API_BASE}/api/ocrproperties`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(dto),
   });
   return handleResponse<OcrProperty>(res);
@@ -69,7 +76,7 @@ export async function updateProperty(
 ): Promise<OcrProperty> {
   const res = await fetch(`${API_BASE}/api/ocrproperties/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(dto),
   });
   return handleResponse<OcrProperty>(res);
@@ -78,6 +85,7 @@ export async function updateProperty(
 export async function deleteProperty(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/ocrproperties/${id}`, {
     method: 'DELETE',
+    headers: { ...authHeaders() },
   });
   return handleResponse<void>(res);
 }
@@ -85,6 +93,7 @@ export async function deleteProperty(id: number): Promise<void> {
 export async function getAnalysisResult(id: number): Promise<AnalysisResultDetail> {
   const res = await fetch(`${API_BASE}/api/documents/${id}`, {
     cache: 'no-store',
+    headers: { ...authHeaders() },
   });
   return handleResponse<AnalysisResultDetail>(res);
 }
@@ -95,7 +104,7 @@ export async function saveFieldOverrides(
 ): Promise<ExtractedField[]> {
   const res = await fetch(`${API_BASE}/api/documents/${documentId}/fields`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(fields),
   });
   if (!res.ok) throw new ApiError(`Save failed: ${res.statusText}`, res.status);
@@ -117,8 +126,18 @@ export async function analyzeDocument(
   const res = await fetch(`${API_BASE}/api/documents/analyze`, {
     method: 'POST',
     body: formData,
+    headers: { ...authHeaders() },
     // No Content-Type header — let browser set multipart boundary
   });
   if (!res.ok) throw new ApiError(`Analysis failed: ${res.statusText}`, res.status);
   return res.json() as Promise<AnalyzeResponse>;
+}
+
+export async function login(username: string, password: string): Promise<{ token: string; expiresAt: string }> {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  return handleResponse<{ token: string; expiresAt: string }>(res);
 }
