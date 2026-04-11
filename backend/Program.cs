@@ -98,11 +98,15 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
-        logger.LogInformation("Applying database migrations...");
-        // Note: ocr_properties seed rows are embedded in InitialCreate via HasData().
-        // SeedData.Initialize handles the AnalysisResults sample record separately.
-        db.Database.Migrate();
-        logger.LogInformation("Migrations applied. Running seed check...");
+        // Skip relational migration when using an in-memory provider (e.g. tests)
+        if (db.Database.IsRelational())
+        {
+            logger.LogInformation("Applying database migrations...");
+            // Note: ocr_properties seed rows are embedded in InitialCreate via HasData().
+            // SeedData.Initialize handles the AnalysisResults sample record separately.
+            db.Database.Migrate();
+            logger.LogInformation("Migrations applied. Running seed check...");
+        }
         SeedData.Initialize(db);
         logger.LogInformation("Seed check complete.");
     }
@@ -135,3 +139,6 @@ app.MapControllers();
 app.MapHealthChecks("/health");
 
 app.Run();
+
+// Make Program accessible to WebApplicationFactory in tests
+public partial class Program { }
