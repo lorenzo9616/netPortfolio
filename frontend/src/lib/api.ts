@@ -7,6 +7,7 @@ import type {
   SavedFieldUpdate,
   ExtractedField,
   AnalysisResultDetail,
+  DocumentHistoryPage,
 } from '@/types/ocr';
 import { getToken } from './auth';
 
@@ -140,4 +141,20 @@ export async function login(username: string, password: string): Promise<{ token
     body: JSON.stringify({ username, password }),
   });
   return handleResponse<{ token: string; expiresAt: string }>(res);
+}
+
+export async function listDocuments(page = 1): Promise<DocumentHistoryPage> {
+  const res = await fetch(`${API_BASE}/api/documents?page=${page}&pageSize=20`, {
+    cache: 'no-store',
+    headers: { ...authHeaders() },
+  });
+  return handleResponse<DocumentHistoryPage>(res);
+}
+
+export async function deleteDocument(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/documents/${id}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  return handleResponse<void>(res);
 }

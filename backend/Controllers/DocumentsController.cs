@@ -123,6 +123,7 @@ public class DocumentsController : ControllerBase
             FileName   = file.FileName,
             RawText    = ocrResult.RawText,
             AnalyzedAt = DateTime.UtcNow,
+            PageCount  = ocrResult.PageCount,
             Fields     = extractedFields.Select(f => new SavedField
             {
                 PropertyName   = f.PropertyName,
@@ -173,7 +174,7 @@ public class DocumentsController : ControllerBase
         {
             DocumentId = analysisResult.Id,
             FileName   = analysisResult.FileName,
-            RawText    = analysisResult.RawText,
+            RawText    = analysisResult.RawText ?? string.Empty,
             AnalyzedAt = analysisResult.AnalyzedAt,
             ExtractedFields = analysisResult.Fields.Select(f => new ExtractedFieldDto
             {
@@ -185,6 +186,79 @@ public class DocumentsController : ControllerBase
         };
 
         return Ok(dto);
+    }
+
+    // ── GET /api/documents ───────────────────────────────────────────────────────
+
+    /// <summary>Returns a paginated list of past analysis results, newest first.</summary>
+    [HttpGet]
+    [ProducesResponseType(typeof(DocumentHistoryPageDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListDocuments(
+        [FromQuery] int page     = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken ct = default)
+    {
+        page     = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var totalCount = await _dbContext.AnalysisResults.CountAsync(ct);
+
+        var results = await _dbContext.AnalysisResults
+            .Include(r => r.Fields)
+            .OrderByDescending(r => r.AnalyzedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        var items = results.Select(r => new DocumentHistoryItemDto
+        {
+            DocumentId = r.Id,
+            CreatedAt  = r.AnalyzedAt,
+            PageCount  = r.PageCount,
+            FieldCount = r.Fields.Count,
+            Preview    = BuildPreview(r.RawText),
+        }).ToList();
+
+        return Ok(new DocumentHistoryPageDto
+        {
+            Items      = items,
+            TotalCount = totalCount,
+            Page       = page,
+            PageSize   = pageSize,
+        });
+    }
+
+    private static string BuildPreview(string? rawText)
+    {
+        if (string.IsNullOrWhiteSpace(rawText)) return string.Empty;
+        if (rawText.Length <= 120) return rawText;
+
+        var truncated = rawText[..120];
+        var lastSpace = truncated.LastIndexOf(' ');
+        return lastSpace > 0
+            ? truncated[..lastSpace] + "..."
+            : truncated + "...";
+    }
+
+    // ── DELETE /api/documents/{id} ───────────────────────────────────────────────
+
+    /// <summary>Deletes an analysis result and all its associated saved fields (cascade).</summary>
+    [HttpDelete("{id:int}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
+    {
+        var analysisResult = await _dbContext.AnalysisResults
+            .FirstOrDefaultAsync(r => r.Id == id, ct);
+
+        if (analysisResult is null)
+            return NotFound($"No analysis result found with id {id}.");
+
+        _dbContext.AnalysisResults.Remove(analysisResult);
+        await _dbContext.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Deleted AnalysisResult.Id={Id}", id);
+        return NoContent();
     }
 
     // ── PUT /api/documents/{id}/fields ───────────────────────────────────────

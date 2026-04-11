@@ -61,3 +61,18 @@ export interface UpdateOcrPropertyDto {
   searchHeuristic?: string | null;
   isActive?: boolean;
 }
+
+export interface DocumentHistoryItem {
+  documentId: number;
+  createdAt: string;
+  pageCount: number;
+  fieldCount: number;
+  preview: string;
+}
+
+export interface DocumentHistoryPage {
+  items: DocumentHistoryItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}

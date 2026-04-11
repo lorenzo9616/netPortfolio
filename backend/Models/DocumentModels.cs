@@ -86,3 +86,23 @@ public class ExtractedFieldDto
     public string? ManualOverride { get; set; }
     public double Confidence { get; set; }
 }
+
+// ── GET /api/documents — list item ───────────────────────────────────────────
+
+public class DocumentHistoryItemDto
+{
+    public int      DocumentId  { get; set; }
+    public DateTime CreatedAt   { get; set; }
+    public int      PageCount   { get; set; }
+    public int      FieldCount  { get; set; }
+    /// <summary>First 120 characters of raw text, trimmed at a word boundary.</summary>
+    public string   Preview     { get; set; } = string.Empty;
+}
+
+public class DocumentHistoryPageDto
+{
+    public List<DocumentHistoryItemDto> Items      { get; set; } = new();
+    public int                          TotalCount { get; set; }
+    public int                          Page       { get; set; }
+    public int                          PageSize   { get; set; }
+}
