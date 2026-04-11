@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using OcrApi.Data;
-using OcrApi.Middleware;
 using OcrApi.Repositories;
 using OcrApi.Services;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -64,6 +66,25 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = 429;
 });
 
+// ── JWT Authentication ──────────────────────────────────────────────────────
+var jwtSecret = builder.Configuration["Auth:JwtSecret"]
+    ?? throw new InvalidOperationException("Auth:JwtSecret must be set in configuration.");
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            ValidateIssuer           = false,
+            ValidateAudience         = false,
+            ClockSkew                = TimeSpan.Zero,
+        };
+    });
+
+builder.Services.AddAuthorization();
+
 // ── Health checks ───────────────────────────────────────────────────────────
 builder.Services.AddHealthChecks();
 
@@ -105,10 +126,8 @@ app.UseCors("FrontendPolicy");
 // 2. Rate limiting — reject overloaded requests early
 app.UseRateLimiter();
 
-// 3. API Key auth — runs after CORS, before routing/controllers
-app.UseMiddleware<ApiKeyMiddleware>();
-
-// 4. Authorization
+// 3. Authentication + Authorization
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

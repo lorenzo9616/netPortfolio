@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OcrApi.Models;
 using OcrApi.Repositories;
 
 namespace OcrApi.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class OcrPropertiesController : ControllerBase

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +9,7 @@ using OcrApi.Services;
 
 namespace OcrApi.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/documents")]
 public class DocumentsController : ControllerBase
