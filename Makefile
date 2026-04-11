@@ -32,7 +32,7 @@ test-e2e:
 ## Stop services and delete all data volumes (full reset)
 reset:
 	@echo "WARNING: This deletes all data. Press Ctrl+C to cancel, or Enter to continue."
-	@read confirm
+	@bash -c 'read -r confirm'
 	docker compose down -v
 	$(MAKE) up
 
