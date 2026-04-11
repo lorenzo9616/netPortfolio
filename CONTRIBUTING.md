@@ -55,3 +55,31 @@ ocr-service/tests/    pytest tests
 e2e/                  Playwright E2E tests
 docs/                 Design specs and implementation plans
 ```
+
+## Pre-commit hooks (lefthook)
+
+[lefthook](https://github.com/evilmartians/lefthook) runs backend, OCR-service, and frontend unit tests on every commit.
+
+Install lefthook (one-time, per developer):
+
+```bash
+# macOS / Linux (Homebrew)
+brew install lefthook
+
+# Windows (Scoop)
+scoop install lefthook
+
+# Or via npm (works everywhere)
+npm install -g lefthook
+```
+
+Then install hooks in the repo:
+
+```bash
+lefthook install
+```
+
+The pre-commit hook runs in parallel:
+- `dotnet test backend/OcrApi.Tests/` — only when `.cs` files change
+- `npm test` in `frontend/` — only when `.ts`/`.tsx` files change
+- `pytest tests/` in `ocr-service/` — only when `.py` files change

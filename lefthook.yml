@@ -1,0 +1,12 @@
+pre-commit:
+  parallel: true
+  commands:
+    backend-tests:
+      run: dotnet test backend/OcrApi.Tests/ --no-build -q
+      glob: "backend/**/*.cs"
+    frontend-tests:
+      run: cd frontend && npm test -- --run
+      glob: "frontend/src/**/*.{ts,tsx}"
+    ocr-service-tests:
+      run: cd ocr-service && python -m pytest tests/ -q
+      glob: "ocr-service/**/*.py"

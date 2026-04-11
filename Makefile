@@ -1,4 +1,4 @@
-.PHONY: up down logs seed test test-e2e reset help
+.PHONY: up down logs seed test test-e2e test-integration reset help
 
 ## Start all services (build if needed)
 up:
@@ -29,6 +29,12 @@ test:
 test-e2e:
 	cd e2e && npx playwright test
 
+## Run integration smoke (health check only — stack must be running)
+test-integration:
+	@curl -sf http://localhost:5000/health | grep -q . && echo "Backend healthy" || (echo "Backend unhealthy" && exit 1)
+	@curl -sf http://localhost:8000/health | grep -q . && echo "OCR service healthy" || (echo "OCR service unhealthy" && exit 1)
+	@curl -sf http://localhost:3000 | grep -q . && echo "Frontend healthy" || (echo "Frontend unhealthy" && exit 1)
+
 ## Stop services and delete all data volumes (full reset)
 reset:
 	@echo "WARNING: This deletes all data. Press Ctrl+C to cancel, or Enter to continue."
@@ -44,5 +50,6 @@ help:
 	@echo "  make logs      - Tail all service logs"
 	@echo "  make seed      - Re-run seed data"
 	@echo "  make test      - Run unit test suites"
-	@echo "  make test-e2e  - Run E2E tests (stack must be running)"
+	@echo "  make test-e2e          - Run E2E tests (stack must be running)"
+	@echo "  make test-integration  - Run integration smoke (stack must be running)"
 	@echo "  make reset     - Wipe data and restart (destructive!)"
