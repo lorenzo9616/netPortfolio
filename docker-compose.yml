@@ -15,7 +15,7 @@ services:
     environment:
       POSTGRES_DB:       ${POSTGRES_DB:-ocrdb}
       POSTGRES_USER:     ${POSTGRES_USER:-ocruser}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     ports:
       - "5432:5432"
     volumes:
@@ -38,7 +38,7 @@ services:
     environment:
       - ASPNETCORE_URLS=http://+:5000
       - ASPNETCORE_ENVIRONMENT=Production
-      - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=${POSTGRES_DB:-ocrdb};Username=${POSTGRES_USER:-ocruser};Password=${POSTGRES_PASSWORD}
+      - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=${POSTGRES_DB:-ocrdb};Username=${POSTGRES_USER:-ocruser};Password=${POSTGRES_PASSWORD:-changeme}
       - Auth__ApiKey=${BACKEND_API_KEY:-}
     networks:
       - ocr-network
@@ -46,7 +46,8 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      # aspnet:8.0-alpine has BusyBox wget but not curl
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5000/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -61,6 +62,9 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:5000}
+      # Server-side (RSC/SSR) requests use the internal Docker service name.
+      # NEXT_PUBLIC_API_URL is baked into the browser bundle and used client-side.
+      - API_URL=http://backend:5000
     networks:
       - ocr-network
     depends_on:
@@ -76,7 +80,8 @@ services:
     networks:
       - ocr-network
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      # python:3.11-slim has no curl/wget; use Python's built-in urllib instead
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 15s
       timeout: 5s
       retries: 3

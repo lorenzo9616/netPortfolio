@@ -70,12 +70,19 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
-// ── Middleware pipeline ─────────────────────────────────────────────────────
-if (app.Environment.IsDevelopment())
+// ── Database schema — create on first run (no migration files needed) ───────
+// EnsureCreated() is idempotent: it does nothing if the schema already exists.
+// This allows docker-compose up to work without a separate migration step.
+using (var scope = app.Services.CreateScope())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "OCR API v1"));
+    var db = scope.ServiceProvider.GetRequiredService<OcrDbContext>();
+    db.Database.EnsureCreated();
 }
+
+// ── Middleware pipeline ─────────────────────────────────────────────────────
+// Swagger enabled in all environments so demo / Docker deployments can explore the API.
+app.UseSwagger();
+app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "OCR API v1"));
 
 // 1. CORS — must come before auth so pre-flight requests are handled
 app.UseCors("FrontendPolicy");

@@ -9,8 +9,12 @@ import type {
   AnalysisResultDetail,
 } from '@/types/ocr';
 
+// Server-side (RSC/SSR): use API_URL (internal Docker hostname, e.g. http://backend:5000).
+// Client-side (browser): NEXT_PUBLIC_API_URL is baked into the bundle at build time.
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
+  typeof window === 'undefined'
+    ? (process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000')
+    : (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000');
 
 export class ApiError extends Error {
   constructor(

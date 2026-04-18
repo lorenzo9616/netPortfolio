@@ -22,34 +22,47 @@ The system is composed of three services and a PostgreSQL database, all orchestr
 
 ## Quick Start
 
-### 1. Clone & configure
-
 ```bash
 git clone <repo>
 cd openocr
-cp .env.example .env
-# Edit .env — set POSTGRES_PASSWORD and optionally BACKEND_API_KEY
-```
-
-### 2. Start the cluster
-
-```bash
 docker-compose up --build
 ```
 
-### 3. Access
+The database schema is created automatically on first boot — no manual migration step required.
 
-- Frontend: http://localhost:3000
-- Backend Swagger: http://localhost:5000/swagger
-- OCR Service health: http://localhost:8000/health
-
-### 4. First-time database setup
+If you want to customise passwords or enable API key auth, copy `.env.example` to `.env` and edit before running:
 
 ```bash
-# After containers are running:
-docker-compose exec backend dotnet ef migrations add InitialCreate
-docker-compose exec backend dotnet ef database update
+cp .env.example .env
+# Edit .env, then:
+docker-compose up --build
 ```
+
+## Access
+
+Once all containers are healthy:
+
+| URL | What |
+|---|---|
+| http://localhost:3000 | Web UI |
+| http://localhost:5000/swagger | Backend REST API explorer |
+| http://localhost:8000/health | OCR service health |
+
+## Seed Data
+
+Five OCR properties are pre-loaded on first run:
+
+| Name | Data Type | Heuristic |
+|---|---|---|
+| Signature | string | (keyword match) |
+| FullName | string | (keyword match) |
+| DateOfBirth | date | `\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b` |
+| BillingTotal | decimal | `\$?\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?` |
+| ProcessingFee | decimal | `\$?\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?` |
+
+## Supported File Types
+
+PDF, PNG, JPG — max 20 MB per upload.
 
 ## Development (without Docker)
 
@@ -65,11 +78,15 @@ cd frontend && npm install && npm run dev
 cd backend && dotnet run
 ```
 
+Requires a local PostgreSQL instance. Update `appsettings.Development.json` with your connection string.
+
 ### OCR Service
 
 ```bash
 cd ocr-service && pip install -r requirements.txt && uvicorn main:app --reload
 ```
+
+Requires Tesseract OCR and Poppler installed on the host.
 
 ## API Key Authentication
 
@@ -79,11 +96,7 @@ Set `BACKEND_API_KEY` in `.env`. All `/api/*` requests must include:
 X-Api-Key: your-key-here
 ```
 
-Leave blank to disable auth (development mode). When an invalid or missing key is supplied, the backend returns a standard `application/problem+json` 401 response.
-
-## Outstanding TODOs
-
-No outstanding `// TODO` comments were found in the codebase at the time of this cleanup session.
+Leave blank to disable auth (development/demo mode). When an invalid or missing key is supplied, the backend returns a standard `application/problem+json` 401 response. The `/health` endpoint is always unauthenticated.
 
 ## License
 

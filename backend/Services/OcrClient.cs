@@ -49,10 +49,11 @@ public class OcrClient : IOcrClient
         // ── Optional crop region ──────────────────────────────────────────────
         if (cropX.HasValue && cropY.HasValue && cropWidth.HasValue && cropHeight.HasValue)
         {
-            multipart.Add(new StringContent(cropX.Value.ToString()),    "cropX");
-            multipart.Add(new StringContent(cropY.Value.ToString()),    "cropY");
-            multipart.Add(new StringContent(cropWidth.Value.ToString()),  "cropWidth");
-            multipart.Add(new StringContent(cropHeight.Value.ToString()), "cropHeight");
+            // FastAPI form field names use snake_case — must match the Python parameter names exactly
+            multipart.Add(new StringContent(cropX.Value.ToString()),      "crop_x");
+            multipart.Add(new StringContent(cropY.Value.ToString()),      "crop_y");
+            multipart.Add(new StringContent(cropWidth.Value.ToString()),  "crop_width");
+            multipart.Add(new StringContent(cropHeight.Value.ToString()), "crop_height");
         }
 
         // ── POST to OCR engine ────────────────────────────────────────────────
