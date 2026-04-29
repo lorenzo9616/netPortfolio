@@ -4,20 +4,13 @@ namespace OcrApi.Models;
 
 public class AnalyzeDocumentRequest
 {
-    /// <summary>Left edge of the crop region in pixels (optional).</summary>
     public int? CropX { get; set; }
-
-    /// <summary>Top edge of the crop region in pixels (optional).</summary>
     public int? CropY { get; set; }
-
-    /// <summary>Width of the crop region in pixels (optional).</summary>
     public int? CropWidth { get; set; }
-
-    /// <summary>Height of the crop region in pixels (optional).</summary>
     public int? CropHeight { get; set; }
 }
 
-// ── OCR engine response types ─────────────────────────────────────────────────
+// ── OCR engine response types (deserialized from Python service) ─────────────
 
 public class OcrTextBlock
 {
@@ -68,6 +61,19 @@ public class SavedFieldUpdateDto
     public string? ManualOverride { get; set; }
 }
 
+// ── Text block DTO (returned to frontend) ────────────────────────────────────
+
+public class TextBlockDto
+{
+    public string Text { get; set; } = string.Empty;
+    public float Confidence { get; set; }
+    public int Page { get; set; }
+    public int BboxX { get; set; }
+    public int BboxY { get; set; }
+    public int BboxWidth { get; set; }
+    public int BboxHeight { get; set; }
+}
+
 // ── GET /api/documents/{id} response ─────────────────────────────────────────
 
 public class AnalysisResultDetailDto
@@ -77,6 +83,8 @@ public class AnalysisResultDetailDto
     public string RawText { get; set; } = string.Empty;
     public DateTime AnalyzedAt { get; set; }
     public string FileName { get; set; } = string.Empty;
+    public List<TextBlockDto> TextBlocks { get; set; } = new();
+    public string? SignatureImage { get; set; }
 }
 
 public class ExtractedFieldDto
@@ -85,4 +93,16 @@ public class ExtractedFieldDto
     public string? ExtractedValue { get; set; }
     public string? ManualOverride { get; set; }
     public double Confidence { get; set; }
+}
+
+// ── PATCH /api/documents/{id}/signature ──────────────────────────────────────
+
+public class SignatureCaptureRequest
+{
+    public string ImageData { get; set; } = string.Empty;
+}
+
+public class SignatureCaptureResponse
+{
+    public string ImageData { get; set; } = string.Empty;
 }
