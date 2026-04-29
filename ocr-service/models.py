@@ -27,6 +27,7 @@ class ExtractTextResponse(BaseModel):
     text_blocks: list[TextBlock]
     raw_text: str
     processing_time_ms: float
+    page_images: list[str] = []
 
 
 class HealthResponse(BaseModel):

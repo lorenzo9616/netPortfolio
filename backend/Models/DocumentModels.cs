@@ -8,6 +8,7 @@ public class AnalyzeDocumentRequest
     public int? CropY { get; set; }
     public int? CropWidth { get; set; }
     public int? CropHeight { get; set; }
+    public string Lang { get; set; } = "eng";
 }
 
 // ── OCR engine response types (deserialized from Python service) ─────────────
@@ -35,6 +36,7 @@ public class ExtractTextResponse
     public List<OcrTextBlock> TextBlocks { get; set; } = new();
     public string RawText { get; set; } = string.Empty;
     public float ProcessingTimeMs { get; set; }
+    public List<string> PageImages { get; set; } = new();
 }
 
 // ── Field extraction types ────────────────────────────────────────────────────
@@ -74,6 +76,17 @@ public class TextBlockDto
     public int BboxHeight { get; set; }
 }
 
+// ── GET /api/documents response ───────────────────────────────────────────────
+
+public class DocumentSummaryDto
+{
+    public int Id { get; set; }
+    public string FileName { get; set; } = string.Empty;
+    public DateTime AnalyzedAt { get; set; }
+    public int FieldCount { get; set; }
+    public int PageCount { get; set; }
+}
+
 // ── GET /api/documents/{id} response ─────────────────────────────────────────
 
 public class AnalysisResultDetailDto
@@ -85,6 +98,7 @@ public class AnalysisResultDetailDto
     public string FileName { get; set; } = string.Empty;
     public List<TextBlockDto> TextBlocks { get; set; } = new();
     public string? SignatureImage { get; set; }
+    public int PageCount { get; set; }
 }
 
 public class ExtractedFieldDto

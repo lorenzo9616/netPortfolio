@@ -33,6 +33,7 @@ public class OcrClient : IOcrClient
         int? cropY,
         int? cropWidth,
         int? cropHeight,
+        string lang = "eng",
         CancellationToken ct = default)
     {
         _logger.LogInformation(
@@ -46,10 +47,11 @@ public class OcrClient : IOcrClient
         fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
         multipart.Add(fileContent, "file", fileName);
 
-        // ── Optional crop region ──────────────────────────────────────────────
+        // ── Language and optional crop region ─────────────────────────────────
+        multipart.Add(new StringContent(lang), "lang");
+
         if (cropX.HasValue && cropY.HasValue && cropWidth.HasValue && cropHeight.HasValue)
         {
-            // FastAPI form field names use snake_case — must match the Python parameter names exactly
             multipart.Add(new StringContent(cropX.Value.ToString()),      "crop_x");
             multipart.Add(new StringContent(cropY.Value.ToString()),      "crop_y");
             multipart.Add(new StringContent(cropWidth.Value.ToString()),  "crop_width");

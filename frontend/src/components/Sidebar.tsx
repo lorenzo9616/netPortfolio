@@ -9,8 +9,9 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Properties', href: '/properties' },
   { label: 'Upload', href: '/upload' },
+  { label: 'History', href: '/documents' },
+  { label: 'Properties', href: '/properties' },
 ];
 
 export default function Sidebar() {

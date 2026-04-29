@@ -48,6 +48,15 @@ export interface AnalysisResultDetail {
   fileName: string;
   textBlocks: OcrTextBlock[];
   signatureImage: string | null;
+  pageCount: number;
+}
+
+export interface DocumentSummary {
+  id: number;
+  fileName: string;
+  analyzedAt: string;
+  fieldCount: number;
+  pageCount: number;
 }
 
 export interface OcrProperty {

@@ -58,10 +58,24 @@ type AnalyzeStatus =
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+const LANGUAGES = [
+  { code: 'eng', label: 'English' },
+  { code: 'spa', label: 'Spanish' },
+  { code: 'fra', label: 'French' },
+  { code: 'deu', label: 'German' },
+  { code: 'ita', label: 'Italian' },
+  { code: 'por', label: 'Portuguese' },
+  { code: 'chi_sim', label: 'Chinese (Simplified)' },
+  { code: 'jpn', label: 'Japanese' },
+  { code: 'kor', label: 'Korean' },
+  { code: 'ara', label: 'Arabic' },
+];
+
 export default function UploadClient() {
   const router = useRouter();
   const [state, dispatch] = useReducer(reducer, initialState);
   const [analyzeStatus, setAnalyzeStatus] = useState<AnalyzeStatus>({ status: 'idle' });
+  const [lang, setLang] = useState('eng');
 
   function handleFileSelected(file: File) {
     const previewUrl = URL.createObjectURL(file);
@@ -96,7 +110,7 @@ export default function UploadClient() {
     if (!state.file) return;
     setAnalyzeStatus({ status: 'loading' });
     try {
-      const result = await analyzeDocument(state.file, state.cropRegion ?? undefined);
+      const result = await analyzeDocument(state.file, state.cropRegion ?? undefined, lang);
       // Redirect immediately — no intermediate success panel
       router.push(`/results/${result.documentId}`);
     } catch (err) {
@@ -159,6 +173,27 @@ export default function UploadClient() {
           </section>
         )}
       </div>
+
+      {/* Language selector */}
+      {!state.isCapturing && (
+        <div className="flex items-center gap-3">
+          <label htmlFor="ocr-lang" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+            Document language
+          </label>
+          <select
+            id="ocr-lang"
+            value={lang}
+            onChange={(e) => setLang(e.target.value)}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Analyze button */}
       {!state.isCapturing && (

@@ -10,6 +10,7 @@ public class AnalysisResult
     public byte[]? SignatureImage { get; set; }
     public List<SavedField> Fields { get; set; } = new();
     public List<SavedTextBlock> TextBlocks { get; set; } = new();
+    public List<DocumentPage> Pages { get; set; } = new();
 }
 
 public class SavedField

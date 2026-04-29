@@ -7,6 +7,7 @@ import type {
   SavedFieldUpdate,
   ExtractedField,
   AnalysisResultDetail,
+  DocumentSummary,
 } from '@/types/ocr';
 
 // Server-side (RSC/SSR): use API_URL (internal Docker hostname, e.g. http://backend:5000).
@@ -37,12 +38,10 @@ async function handleResponse<T>(res: Response): Promise<T> {
         message = body;
       }
     } catch {
-      // fallback to status text
       message = res.statusText || message;
     }
     throw new ApiError(message, res.status);
   }
-  // 204 No Content
   if (res.status === 204) {
     return undefined as unknown as T;
   }
@@ -86,6 +85,13 @@ export async function deleteProperty(id: number): Promise<void> {
   return handleResponse<void>(res);
 }
 
+export async function getDocuments(): Promise<DocumentSummary[]> {
+  const res = await fetch(`${API_BASE}/api/documents`, {
+    cache: 'no-store',
+  });
+  return handleResponse<DocumentSummary[]>(res);
+}
+
 export async function getAnalysisResult(id: number): Promise<AnalysisResultDetail> {
   const res = await fetch(`${API_BASE}/api/documents/${id}`, {
     cache: 'no-store',
@@ -121,9 +127,11 @@ export async function captureSignature(
 export async function analyzeDocument(
   file: File,
   crop?: CropRegion,
+  lang: string = 'eng',
 ): Promise<AnalyzeResponse> {
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('lang', lang);
   if (crop) {
     formData.append('cropX', String(crop.x));
     formData.append('cropY', String(crop.y));
@@ -133,7 +141,6 @@ export async function analyzeDocument(
   const res = await fetch(`${API_BASE}/api/documents/analyze`, {
     method: 'POST',
     body: formData,
-    // No Content-Type header — let browser set multipart boundary
   });
   if (!res.ok) throw new ApiError(`Analysis failed: ${res.statusText}`, res.status);
   return res.json() as Promise<AnalyzeResponse>;

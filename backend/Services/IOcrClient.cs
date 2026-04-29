@@ -4,10 +4,6 @@ namespace OcrApi.Services;
 
 public interface IOcrClient
 {
-    /// <summary>
-    /// Forwards the uploaded file to the Python OCR engine and returns the
-    /// structured text-extraction response.
-    /// </summary>
     Task<ExtractTextResponse> ExtractTextAsync(
         Stream fileStream,
         string fileName,
@@ -16,5 +12,6 @@ public interface IOcrClient
         int? cropY,
         int? cropWidth,
         int? cropHeight,
+        string lang = "eng",
         CancellationToken ct = default);
 }

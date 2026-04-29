@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import type { OcrTextBlock } from '@/types/ocr';
 
 function ConfidenceBadge({ value }: { value: number }) {
@@ -20,15 +23,47 @@ interface Props {
 }
 
 export default function OcrTokensTable({ blocks }: Props) {
+  const [threshold, setThreshold] = useState(0);
+  const filtered = blocks.filter((b) => b.confidence >= threshold);
+
   return (
     <section aria-label="Raw OCR tokens">
-      <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
-        Raw OCR Tokens
-      </h2>
+      <div className="mb-4 flex flex-wrap items-center gap-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+          Raw OCR Tokens
+        </h2>
+        {blocks.length > 0 && (
+          <div className="ml-auto flex items-center gap-3">
+            <label htmlFor="conf-threshold" className="whitespace-nowrap text-xs text-gray-500">
+              Min confidence
+            </label>
+            <input
+              id="conf-threshold"
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={threshold}
+              onChange={(e) => setThreshold(Number(e.target.value))}
+              className="w-28 accent-blue-600"
+            />
+            <span className="w-8 text-right text-xs font-semibold text-gray-700">
+              {threshold}%
+            </span>
+            <span className="text-xs text-gray-400">
+              ({filtered.length}/{blocks.length})
+            </span>
+          </div>
+        )}
+      </div>
 
-      {blocks.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="rounded-xl border border-gray-200 bg-gray-50 px-5 py-6 text-center">
-          <p className="text-sm text-gray-600">No OCR tokens found.</p>
+          <p className="text-sm text-gray-600">
+            {blocks.length === 0
+              ? 'No OCR tokens found.'
+              : 'No tokens meet the confidence threshold.'}
+          </p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
@@ -44,7 +79,7 @@ export default function OcrTokensTable({ blocks }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {blocks.map((b, i) => (
+                {filtered.map((b, i) => (
                   <tr key={i} className="align-middle">
                     <td className="px-4 py-2 text-gray-400">{i + 1}</td>
                     <td className="px-4 py-2 font-medium text-gray-800">{b.text}</td>

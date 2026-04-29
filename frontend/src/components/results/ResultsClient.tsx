@@ -46,15 +46,20 @@ export default function ResultsClient({ result }: Props) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
 
+  // Page navigation for multi-page documents
+  const [currentPage, setCurrentPage] = useState(1);
+
   // Compute imageUrl client-side only to avoid SSR/hydration mismatch.
-  // API_BASE evaluates differently on server (API_URL = internal Docker hostname)
-  // vs browser (NEXT_PUBLIC_API_URL). Using state + useEffect pins this to the
-  // browser value after hydration.
+  // Use per-page endpoint when page images were stored; fall back to legacy endpoint.
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   useEffect(() => {
     const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
-    setImageUrl(`${base}/api/documents/${result.documentId}/image`);
-  }, [result.documentId]);
+    if (result.pageCount > 0) {
+      setImageUrl(`${base}/api/documents/${result.documentId}/image/${currentPage}`);
+    } else {
+      setImageUrl(`${base}/api/documents/${result.documentId}/image`);
+    }
+  }, [result.documentId, result.pageCount, currentPage]);
 
   useEffect(() => {
     if (saveStatus !== 'success') return;
@@ -106,6 +111,35 @@ export default function ResultsClient({ result }: Props) {
     } finally {
       setIsCapturing(false);
     }
+  }
+
+  function triggerDownload(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleExportJson() {
+    const data = result.extractedFields.map((f) => ({
+      field: f.propertyName,
+      value: overrides[f.propertyName] || f.extractedValue || null,
+      confidence: Math.round(f.confidence * 100),
+    }));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    triggerDownload(blob, `${result.fileName}-fields.json`);
+  }
+
+  function handleExportCsv() {
+    const header = 'Field,Value,Confidence %';
+    const rows = result.extractedFields.map((f) => {
+      const val = (overrides[f.propertyName] || f.extractedValue || '').replace(/"/g, '""');
+      return `"${f.propertyName}","${val}",${Math.round(f.confidence * 100)}`;
+    });
+    const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv' });
+    triggerDownload(blob, `${result.fileName}-fields.csv`);
   }
 
   const analyzedDate = new Date(result.analyzedAt).toLocaleString(undefined, {
@@ -179,24 +213,45 @@ export default function ResultsClient({ result }: Props) {
             </div>
           )}
 
-          {/* Save button & banners */}
+          {/* Action buttons */}
           <div className="mt-4 flex flex-col gap-3">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving || result.extractedFields.length === 0}
-              className="w-full rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:w-auto"
-            >
-              {isSaving ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg aria-hidden="true" className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                  Saving…
-                </span>
-              ) : 'Save Changes'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving || result.extractedFields.length === 0}
+                className="rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                {isSaving ? (
+                  <span className="flex items-center gap-2">
+                    <svg aria-hidden="true" className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    Saving…
+                  </span>
+                ) : 'Save Changes'}
+              </button>
+
+              {result.extractedFields.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleExportJson}
+                    className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+                  >
+                    Export JSON
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportCsv}
+                    className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+                  >
+                    Export CSV
+                  </button>
+                </>
+              )}
+            </div>
 
             {saveStatus === 'success' && (
               <div role="status" aria-live="polite" className="rounded-xl border border-green-200 bg-green-50 px-5 py-3">
@@ -247,6 +302,9 @@ export default function ResultsClient({ result }: Props) {
                 onCapture={handleCapture}
                 isSaving={isCapturing}
                 captureError={captureError}
+                pageCount={result.pageCount}
+                currentPage={currentPage}
+                onPageChange={setCurrentPage}
               />
             )}
 

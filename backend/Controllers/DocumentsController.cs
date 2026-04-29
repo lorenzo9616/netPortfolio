@@ -40,6 +40,27 @@ public class DocumentsController : ControllerBase
         _logger             = logger;
     }
 
+    // ── GET /api/documents ───────────────────────────────────────────────────
+
+    [HttpGet]
+    [ProducesResponseType(typeof(List<DocumentSummaryDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAll(CancellationToken ct)
+    {
+        var summaries = await _dbContext.AnalysisResults
+            .OrderByDescending(r => r.AnalyzedAt)
+            .Select(r => new DocumentSummaryDto
+            {
+                Id         = r.Id,
+                FileName   = r.FileName,
+                AnalyzedAt = r.AnalyzedAt,
+                FieldCount = r.Fields.Count,
+                PageCount  = r.Pages.Count,
+            })
+            .ToListAsync(ct);
+
+        return Ok(summaries);
+    }
+
     // ── POST /api/documents/analyze ──────────────────────────────────────────
 
     [HttpPost("analyze")]
@@ -68,10 +89,9 @@ public class DocumentsController : ControllerBase
         }
 
         _logger.LogInformation(
-            "DocumentsController: Analyze started — file='{FileName}' size={Size} bytes",
-            file.FileName, file.Length);
+            "DocumentsController: Analyze started — file='{FileName}' size={Size} bytes lang='{Lang}'",
+            file.FileName, file.Length, request.Lang);
 
-        // Buffer file bytes so we can store them AND pass to OCR without reading the stream twice
         byte[] fileBytes;
         using (var ms = new MemoryStream())
         {
@@ -94,6 +114,7 @@ public class DocumentsController : ControllerBase
                 request.CropY,
                 request.CropWidth,
                 request.CropHeight,
+                request.Lang,
                 ct);
         }
         catch (HttpRequestException ex)
@@ -127,15 +148,27 @@ public class DocumentsController : ControllerBase
                 BboxY      = b.BoundingBox.Y,
                 BboxWidth  = b.BoundingBox.Width,
                 BboxHeight = b.BoundingBox.Height,
-            }).ToList()
+            }).ToList(),
         };
+
+        for (int i = 0; i < ocrResult.PageImages.Count; i++)
+        {
+            if (!string.IsNullOrEmpty(ocrResult.PageImages[i]))
+            {
+                analysisResult.Pages.Add(new DocumentPage
+                {
+                    PageNumber = i + 1,
+                    ImageBytes = Convert.FromBase64String(ocrResult.PageImages[i])
+                });
+            }
+        }
 
         _dbContext.AnalysisResults.Add(analysisResult);
         await _dbContext.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "DocumentsController: Analyze complete — AnalysisResult.Id={Id}, {FieldCount} field(s), {BlockCount} token(s) saved",
-            analysisResult.Id, analysisResult.Fields.Count, analysisResult.TextBlocks.Count);
+            "DocumentsController: Analyze complete — AnalysisResult.Id={Id}, {FieldCount} field(s), {BlockCount} token(s), {PageCount} page image(s) saved",
+            analysisResult.Id, analysisResult.Fields.Count, analysisResult.TextBlocks.Count, analysisResult.Pages.Count);
 
         return Ok(new AnalyzeDocumentResponse
         {
@@ -152,7 +185,6 @@ public class DocumentsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(int id, CancellationToken ct)
     {
-        // Step 1: project to an anonymous type — ImageBytes is intentionally excluded (large, not needed here)
         var raw = await _dbContext.AnalysisResults
             .Where(r => r.Id == id)
             .Select(r => new
@@ -162,6 +194,7 @@ public class DocumentsController : ControllerBase
                 r.RawText,
                 r.AnalyzedAt,
                 r.SignatureImage,
+                PageCount = r.Pages.Count,
                 Fields = r.Fields.Select(f => new ExtractedFieldDto
                 {
                     PropertyName   = f.PropertyName,
@@ -185,13 +218,13 @@ public class DocumentsController : ControllerBase
         if (raw is null)
             return NotFound($"No analysis result found with id {id}.");
 
-        // Step 2: base64 conversion happens in C#, not in the SQL query
         var dto = new AnalysisResultDetailDto
         {
             DocumentId     = raw.Id,
             FileName       = raw.FileName,
             RawText        = raw.RawText,
             AnalyzedAt     = raw.AnalyzedAt,
+            PageCount      = raw.PageCount,
             SignatureImage = raw.SignatureImage is not null
                                ? Convert.ToBase64String(raw.SignatureImage)
                                : null,
@@ -238,7 +271,6 @@ public class DocumentsController : ControllerBase
         _logger.LogInformation(
             "DocumentsController: UpdateFields complete — AnalysisResult.Id={Id}", id);
 
-        // Map to DTO — avoids circular reference from the AnalysisResult navigation property
         var dtos = analysisResult.Fields.Select(f => new ExtractedFieldDto
         {
             PropertyName   = f.PropertyName,
@@ -267,6 +299,24 @@ public class DocumentsController : ControllerBase
 
         var contentType = GetContentType(row.FileName);
         return File(row.ImageBytes, contentType);
+    }
+
+    // ── GET /api/documents/{id}/image/{page} ─────────────────────────────────
+
+    [HttpGet("{id:int}/image/{page:int}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetPageImage(int id, int page, CancellationToken ct)
+    {
+        var docPage = await _dbContext.DocumentPages
+            .Where(p => p.AnalysisResultId == id && p.PageNumber == page)
+            .Select(p => new { p.ImageBytes })
+            .FirstOrDefaultAsync(ct);
+
+        if (docPage is null)
+            return NotFound($"Page {page} not found for document {id}.");
+
+        return File(docPage.ImageBytes, "image/jpeg");
     }
 
     // ── PATCH /api/documents/{id}/signature ──────────────────────────────────

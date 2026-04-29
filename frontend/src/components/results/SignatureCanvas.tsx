@@ -9,15 +9,33 @@ interface Props {
   onCapture: (base64Png: string) => void;
   isSaving: boolean;
   captureError: string | null;
+  pageCount?: number;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
 }
 
-export default function SignatureCanvas({ imageUrl, onCapture, isSaving, captureError }: Props) {
+export default function SignatureCanvas({
+  imageUrl,
+  onCapture,
+  isSaving,
+  captureError,
+  pageCount = 1,
+  currentPage = 1,
+  onPageChange,
+}: Props) {
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [selection, setSelection] = useState<Rect | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
+
+  // Reset canvas state when navigating to a different page
+  useEffect(() => {
+    setSelection(null);
+    setImageLoaded(false);
+    setImageError(false);
+  }, [currentPage]);
 
   // Sync canvas buffer size to displayed image size whenever the image loads
   useEffect(() => {
@@ -71,7 +89,6 @@ export default function SignatureCanvas({ imageUrl, onCapture, isSaving, capture
     const img = imgRef.current;
     if (!img || !selection || selection.w <= 5 || selection.h <= 5) return;
 
-    // Scale from display pixels → natural image pixels
     const scaleX = img.naturalWidth / img.clientWidth;
     const scaleY = img.naturalHeight / img.clientHeight;
     const nx = Math.round(selection.x * scaleX);
@@ -85,13 +102,13 @@ export default function SignatureCanvas({ imageUrl, onCapture, isSaving, capture
     offscreen.height = nh;
     const ctx = offscreen.getContext('2d');
     if (!ctx) return;
-    // Draw the full image offset so that the selected region sits at (0,0)
     ctx.drawImage(img, -nx, -ny, img.naturalWidth, img.naturalHeight);
     const base64 = offscreen.toDataURL('image/png').split(',')[1];
     onCapture(base64);
   }
 
   const hasValidSelection = selection !== null && selection.w > 5 && selection.h > 5;
+  const showPageNav = pageCount > 1 && onPageChange !== undefined;
 
   if (imageError) {
     return (
@@ -103,16 +120,43 @@ export default function SignatureCanvas({ imageUrl, onCapture, isSaving, capture
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-xs text-gray-500">
-        Draw a box over the signature area, then click <strong>Capture Signature</strong>.
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-gray-500">
+          Draw a box over the signature area, then click <strong>Capture Signature</strong>.
+        </p>
+        {showPageNav && (
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onPageChange(currentPage - 1)}
+              disabled={currentPage <= 1}
+              aria-label="Previous page"
+              className="rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              ← Prev
+            </button>
+            <span className="text-xs text-gray-500">
+              {currentPage}&nbsp;/&nbsp;{pageCount}
+            </span>
+            <button
+              type="button"
+              onClick={() => onPageChange(currentPage + 1)}
+              disabled={currentPage >= pageCount}
+              aria-label="Next page"
+              className="rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next →
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="relative overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
         {/* crossOrigin="anonymous" required so canvas.drawImage() can read cross-origin pixels */}
         <img
           ref={imgRef}
           src={imageUrl}
-          alt="Document preview"
+          alt={`Document preview — page ${currentPage}`}
           crossOrigin="anonymous"
           onLoad={() => setImageLoaded(true)}
           onError={() => setImageError(true)}

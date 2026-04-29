@@ -13,6 +13,7 @@ public class OcrDbContext : DbContext
     public DbSet<AnalysisResult> AnalysisResults => Set<AnalysisResult>();
     public DbSet<SavedField>     SavedFields      => Set<SavedField>();
     public DbSet<SavedTextBlock> SavedTextBlocks  => Set<SavedTextBlock>();
+    public DbSet<DocumentPage>   DocumentPages    => Set<DocumentPage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -65,6 +66,20 @@ public class OcrDbContext : DbContext
                   .WithOne(b => b.AnalysisResult)
                   .HasForeignKey(b => b.AnalysisResultId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(e => e.Pages)
+                  .WithOne(p => p.AnalysisResult)
+                  .HasForeignKey(p => p.AnalysisResultId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── DocumentPage ──────────────────────────────────────────────────────
+        modelBuilder.Entity<DocumentPage>(entity =>
+        {
+            entity.ToTable("document_pages");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ImageBytes).IsRequired();
+            entity.HasIndex(e => e.AnalysisResultId);
         });
 
         // ── SavedField ────────────────────────────────────────────────────────
