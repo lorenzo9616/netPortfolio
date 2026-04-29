@@ -42,11 +42,6 @@ public class DocumentsController : ControllerBase
 
     // ── POST /api/documents/analyze ──────────────────────────────────────────
 
-    /// <summary>
-    /// Accepts a multipart upload, runs it through the OCR engine, matches
-    /// fields against active OcrProperties, persists the result and returns
-    /// the extracted data.
-    /// </summary>
     [HttpPost("analyze")]
     [EnableRateLimiting("ocr-policy")]
     [Consumes("multipart/form-data")]
@@ -59,19 +54,14 @@ public class DocumentsController : ControllerBase
         [FromForm] AnalyzeDocumentRequest request,
         CancellationToken ct)
     {
-        // ── Validate file ─────────────────────────────────────────────────────
         if (file is null || file.Length == 0)
-        {
             return BadRequest("A non-empty file is required.");
-        }
 
         var contentType = file.ContentType?.Trim();
         if (string.IsNullOrEmpty(contentType) || !_allowedContentTypes.Contains(contentType))
         {
             _logger.LogWarning(
-                "DocumentsController: unsupported content-type '{ContentType}' rejected",
-                contentType);
-
+                "DocumentsController: unsupported content-type '{ContentType}' rejected", contentType);
             return StatusCode(
                 StatusCodes.Status415UnsupportedMediaType,
                 $"Unsupported file type '{contentType}'. Allowed: image/png, image/jpeg, application/pdf.");
@@ -81,20 +71,23 @@ public class DocumentsController : ControllerBase
             "DocumentsController: Analyze started — file='{FileName}' size={Size} bytes",
             file.FileName, file.Length);
 
-        // ── Fetch active properties ───────────────────────────────────────────
+        // Buffer file bytes so we can store them AND pass to OCR without reading the stream twice
+        byte[] fileBytes;
+        using (var ms = new MemoryStream())
+        {
+            await file.CopyToAsync(ms, ct);
+            fileBytes = ms.ToArray();
+        }
+
         var allProperties = await _propertyRepository.GetAllAsync();
         var activeProperties = allProperties.Where(p => p.IsActive).ToList();
 
-        // ── Call OCR engine ───────────────────────────────────────────────────
         ExtractTextResponse ocrResult;
         try
         {
-            // Open the stream inside a using block so it is closed immediately
-            // after OcrClient finishes reading it.
-            await using var fileStream = file.OpenReadStream();
-
+            await using var ocrStream = new MemoryStream(fileBytes);
             ocrResult = await _ocrClient.ExtractTextAsync(
-                fileStream,
+                ocrStream,
                 file.FileName,
                 contentType,
                 request.CropX,
@@ -107,25 +100,33 @@ public class DocumentsController : ControllerBase
         {
             _logger.LogError(ex,
                 "DocumentsController: OCR service failure for '{FileName}'", file.FileName);
-
             return StatusCode(StatusCodes.Status502BadGateway,
                 "The OCR service is unavailable or returned an error. Please try again later.");
         }
 
-        // ── Match fields ──────────────────────────────────────────────────────
         var extractedFields = _fieldMatcher.MatchFields(activeProperties, ocrResult);
 
-        // ── Persist result ────────────────────────────────────────────────────
         var analysisResult = new AnalysisResult
         {
             FileName   = file.FileName,
             RawText    = ocrResult.RawText,
             AnalyzedAt = DateTime.UtcNow,
+            ImageBytes = fileBytes,
             Fields     = extractedFields.Select(f => new SavedField
             {
                 PropertyName   = f.PropertyName,
                 ExtractedValue = f.ExtractedValue,
                 Confidence     = f.Confidence
+            }).ToList(),
+            TextBlocks = ocrResult.TextBlocks.Select(b => new SavedTextBlock
+            {
+                Text       = b.Text,
+                Confidence = b.Confidence,
+                Page       = b.Page,
+                BboxX      = b.BoundingBox.X,
+                BboxY      = b.BoundingBox.Y,
+                BboxWidth  = b.BoundingBox.Width,
+                BboxHeight = b.BoundingBox.Height,
             }).ToList()
         };
 
@@ -133,53 +134,69 @@ public class DocumentsController : ControllerBase
         await _dbContext.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "DocumentsController: Analyze complete — AnalysisResult.Id={Id}, {FieldCount} field(s) saved",
-            analysisResult.Id, analysisResult.Fields.Count);
+            "DocumentsController: Analyze complete — AnalysisResult.Id={Id}, {FieldCount} field(s), {BlockCount} token(s) saved",
+            analysisResult.Id, analysisResult.Fields.Count, analysisResult.TextBlocks.Count);
 
-        // ── Return response ───────────────────────────────────────────────────
-        var response = new AnalyzeDocumentResponse
+        return Ok(new AnalyzeDocumentResponse
         {
             DocumentId      = analysisResult.Id,
             RawText         = ocrResult.RawText,
             ExtractedFields = extractedFields
-        };
-
-        return Ok(response);
+        });
     }
 
     // ── GET /api/documents/{id} ──────────────────────────────────────────────
 
-    /// <summary>
-    /// Returns the full analysis result (fields + raw text + metadata) for a
-    /// previously processed document.
-    /// </summary>
     [HttpGet("{id:int}")]
     [ProducesResponseType(typeof(AnalysisResultDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(int id, CancellationToken ct)
     {
-        var analysisResult = await _dbContext.AnalysisResults
-            .Include(r => r.Fields)
-            .FirstOrDefaultAsync(r => r.Id == id, ct);
+        // Step 1: project to an anonymous type — ImageBytes is intentionally excluded (large, not needed here)
+        var raw = await _dbContext.AnalysisResults
+            .Where(r => r.Id == id)
+            .Select(r => new
+            {
+                r.Id,
+                r.FileName,
+                r.RawText,
+                r.AnalyzedAt,
+                r.SignatureImage,
+                Fields = r.Fields.Select(f => new ExtractedFieldDto
+                {
+                    PropertyName   = f.PropertyName,
+                    ExtractedValue = f.ExtractedValue,
+                    ManualOverride = f.ManualOverride,
+                    Confidence     = f.Confidence,
+                }).ToList(),
+                TextBlocks = r.TextBlocks.Select(b => new TextBlockDto
+                {
+                    Text       = b.Text,
+                    Confidence = b.Confidence,
+                    Page       = b.Page,
+                    BboxX      = b.BboxX,
+                    BboxY      = b.BboxY,
+                    BboxWidth  = b.BboxWidth,
+                    BboxHeight = b.BboxHeight,
+                }).ToList(),
+            })
+            .FirstOrDefaultAsync(ct);
 
-        if (analysisResult is null)
-        {
+        if (raw is null)
             return NotFound($"No analysis result found with id {id}.");
-        }
 
+        // Step 2: base64 conversion happens in C#, not in the SQL query
         var dto = new AnalysisResultDetailDto
         {
-            DocumentId = analysisResult.Id,
-            FileName   = analysisResult.FileName,
-            RawText    = analysisResult.RawText,
-            AnalyzedAt = analysisResult.AnalyzedAt,
-            ExtractedFields = analysisResult.Fields.Select(f => new ExtractedFieldDto
-            {
-                PropertyName   = f.PropertyName,
-                ExtractedValue = f.ExtractedValue,
-                ManualOverride = f.ManualOverride,
-                Confidence     = f.Confidence,
-            }).ToList(),
+            DocumentId     = raw.Id,
+            FileName       = raw.FileName,
+            RawText        = raw.RawText,
+            AnalyzedAt     = raw.AnalyzedAt,
+            SignatureImage = raw.SignatureImage is not null
+                               ? Convert.ToBase64String(raw.SignatureImage)
+                               : null,
+            ExtractedFields = raw.Fields,
+            TextBlocks      = raw.TextBlocks,
         };
 
         return Ok(dto);
@@ -187,12 +204,8 @@ public class DocumentsController : ControllerBase
 
     // ── PUT /api/documents/{id}/fields ───────────────────────────────────────
 
-    /// <summary>
-    /// Applies user-supplied manual overrides to the saved fields of an
-    /// existing <see cref="AnalysisResult"/>.
-    /// </summary>
     [HttpPut("{id:int}/fields")]
-    [ProducesResponseType(typeof(List<SavedField>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(List<ExtractedFieldDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateFields(
         int id,
@@ -207,11 +220,8 @@ public class DocumentsController : ControllerBase
             .FirstOrDefaultAsync(r => r.Id == id, ct);
 
         if (analysisResult is null)
-        {
             return NotFound($"No analysis result found with id {id}.");
-        }
 
-        // Apply overrides to matching fields.
         foreach (var update in updates)
         {
             var field = analysisResult.Fields
@@ -220,9 +230,7 @@ public class DocumentsController : ControllerBase
                     StringComparison.OrdinalIgnoreCase));
 
             if (field is not null)
-            {
                 field.ManualOverride = update.ManualOverride;
-            }
         }
 
         await _dbContext.SaveChangesAsync(ct);
@@ -230,6 +238,88 @@ public class DocumentsController : ControllerBase
         _logger.LogInformation(
             "DocumentsController: UpdateFields complete — AnalysisResult.Id={Id}", id);
 
-        return Ok(analysisResult.Fields);
+        // Map to DTO — avoids circular reference from the AnalysisResult navigation property
+        var dtos = analysisResult.Fields.Select(f => new ExtractedFieldDto
+        {
+            PropertyName   = f.PropertyName,
+            ExtractedValue = f.ExtractedValue,
+            ManualOverride = f.ManualOverride,
+            Confidence     = f.Confidence,
+        }).ToList();
+
+        return Ok(dtos);
+    }
+
+    // ── GET /api/documents/{id}/image ────────────────────────────────────────
+
+    [HttpGet("{id:int}/image")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetImage(int id, CancellationToken ct)
+    {
+        var row = await _dbContext.AnalysisResults
+            .Where(r => r.Id == id)
+            .Select(r => new { r.FileName, r.ImageBytes })
+            .FirstOrDefaultAsync(ct);
+
+        if (row is null || row.ImageBytes is null)
+            return NotFound("Image not available for this document.");
+
+        var contentType = GetContentType(row.FileName);
+        return File(row.ImageBytes, contentType);
+    }
+
+    // ── PATCH /api/documents/{id}/signature ──────────────────────────────────
+
+    [HttpPatch("{id:int}/signature")]
+    [ProducesResponseType(typeof(SignatureCaptureResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CaptureSignature(
+        int id,
+        [FromBody] SignatureCaptureRequest request,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.ImageData))
+            return BadRequest("imageData is required.");
+
+        byte[] imageBytes;
+        try
+        {
+            imageBytes = Convert.FromBase64String(request.ImageData);
+        }
+        catch (FormatException)
+        {
+            return BadRequest("imageData must be a valid base64 string.");
+        }
+
+        var analysisResult = await _dbContext.AnalysisResults
+            .FirstOrDefaultAsync(r => r.Id == id, ct);
+
+        if (analysisResult is null)
+            return NotFound($"No analysis result found with id {id}.");
+
+        analysisResult.SignatureImage = imageBytes;
+        await _dbContext.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "DocumentsController: signature captured for AnalysisResult.Id={Id} ({Bytes} bytes)",
+            id, imageBytes.Length);
+
+        return Ok(new SignatureCaptureResponse { ImageData = request.ImageData });
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static string GetContentType(string fileName)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        return ext switch
+        {
+            ".png"            => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".pdf"            => "application/pdf",
+            _                 => "application/octet-stream"
+        };
     }
 }
