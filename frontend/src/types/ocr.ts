@@ -30,12 +30,24 @@ export interface SavedFieldUpdate {
   manualOverride: string | null;
 }
 
+export interface OcrTextBlock {
+  text: string;
+  confidence: number;
+  page: number;
+  bboxX: number;
+  bboxY: number;
+  bboxWidth: number;
+  bboxHeight: number;
+}
+
 export interface AnalysisResultDetail {
   documentId: number;
   extractedFields: ExtractedField[];
   rawText: string;
   analyzedAt: string;
   fileName: string;
+  textBlocks: OcrTextBlock[];
+  signatureImage: string | null;
 }
 
 export interface OcrProperty {
