@@ -106,6 +106,18 @@ export async function saveFieldOverrides(
   return res.json() as Promise<ExtractedField[]>;
 }
 
+export async function captureSignature(
+  documentId: number,
+  imageData: string,
+): Promise<{ imageData: string }> {
+  const res = await fetch(`${API_BASE}/api/documents/${documentId}/signature`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageData }),
+  });
+  return handleResponse<{ imageData: string }>(res);
+}
+
 export async function analyzeDocument(
   file: File,
   crop?: CropRegion,
