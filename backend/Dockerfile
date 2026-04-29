@@ -20,11 +20,11 @@ WORKDIR /app
 
 # Create non-root user
 RUN addgroup --system --gid 1001 appgroup \
- && adduser  --system --uid 1001 --ingroup appgroup app
+ && adduser  --system --uid 1001 --ingroup appgroup appuser
 
-COPY --from=builder --chown=app:appgroup /app/publish ./
+COPY --from=builder --chown=appuser:appgroup /app/publish ./
 
-USER app
+USER appuser
 
 EXPOSE 5000
 

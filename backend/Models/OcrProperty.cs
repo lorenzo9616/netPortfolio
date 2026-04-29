@@ -13,6 +13,9 @@ public class OcrProperty
     /// <summary>Optional regex or keyword hint used during OCR extraction.</summary>
     public string? SearchHeuristic { get; set; }
 
+    /// <summary>When true, SearchHeuristic is treated as a regex; otherwise plain keyword.</summary>
+    public bool IsRegex { get; set; } = false;
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

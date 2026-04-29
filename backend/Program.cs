@@ -66,17 +66,17 @@ builder.Services.AddRateLimiter(options =>
 
 // ── Health checks ───────────────────────────────────────────────────────────
 builder.Services.AddHealthChecks()
-    .AddNpgsql(connectionString ?? string.Empty, name: "postgres");
+    .AddDbContextCheck<OcrApi.Data.OcrDbContext>("postgres");
 
 var app = builder.Build();
 
-// ── Database schema — create on first run (no migration files needed) ───────
-// EnsureCreated() is idempotent: it does nothing if the schema already exists.
-// This allows docker-compose up to work without a separate migration step.
+// ── Database schema — apply pending migrations on every startup ─────────────
+// docker-compose depends_on: condition: service_healthy guarantees Postgres is
+// accepting connections before this process starts.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<OcrDbContext>();
-    db.Database.EnsureCreated();
+    db.Database.Migrate();
 }
 
 // ── Middleware pipeline ─────────────────────────────────────────────────────

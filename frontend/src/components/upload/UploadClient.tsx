@@ -1,6 +1,6 @@
 'use client';
 
-import { useReducer, useCallback } from 'react';
+import { useReducer, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { UploadState, CropRegion } from '@/types/ocr';
 import { analyzeDocument, ApiError } from '@/lib/api';
@@ -61,7 +61,7 @@ type AnalyzeStatus =
 export default function UploadClient() {
   const router = useRouter();
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [analyzeStatus, setAnalyzeStatus] = useReducerLike<AnalyzeStatus>({ status: 'idle' });
+  const [analyzeStatus, setAnalyzeStatus] = useState<AnalyzeStatus>({ status: 'idle' });
 
   function handleFileSelected(file: File) {
     const previewUrl = URL.createObjectURL(file);
@@ -219,11 +219,4 @@ export default function UploadClient() {
       )}
     </div>
   );
-}
-
-// ─── Tiny useState-like helper (avoids useReducer boilerplate for flat state) ─
-
-function useReducerLike<T>(init: T): [T, (v: T) => void] {
-  const [value, dispatch] = useReducer((_: T, next: T) => next, init);
-  return [value, dispatch];
 }

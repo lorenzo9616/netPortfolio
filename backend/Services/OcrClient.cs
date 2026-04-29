@@ -10,7 +10,7 @@ public class OcrClient : IOcrClient
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
     };
 
     private readonly HttpClient _httpClient;
