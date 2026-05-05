@@ -4,7 +4,7 @@ import { getDocuments, ApiError } from '@/lib/api';
 import DocumentsClient from '@/components/documents/DocumentsClient';
 
 export const metadata: Metadata = {
-  title: 'Document History — OpenOCR',
+  title: 'Analyzed Documents — OpenOCR',
 };
 
 export default async function DocumentsPage() {
@@ -13,7 +13,7 @@ export default async function DocumentsPage() {
     return (
       <div>
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">Document History</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Analyzed Documents</h1>
           <Link
             href="/upload"
             className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -31,7 +31,7 @@ export default async function DocumentsPage() {
       : 'Failed to load documents.';
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">Document History</h1>
+        <h1 className="mb-6 text-2xl font-bold text-gray-900">Analyzed Documents</h1>
         <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4">
           <p className="text-sm font-semibold text-red-800">Failed to load documents</p>
           <p className="mt-1 text-xs text-red-700">{message}</p>

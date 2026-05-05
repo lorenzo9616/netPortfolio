@@ -10,7 +10,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Upload', href: '/upload' },
-  { label: 'History', href: '/documents' },
+  { label: 'Analyzed Documents', href: '/documents' },
   { label: 'Properties', href: '/properties' },
 ];
 
