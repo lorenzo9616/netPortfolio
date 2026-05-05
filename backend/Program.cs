@@ -42,6 +42,7 @@ builder.Services.AddHttpClient("anthropic", client =>
 {
     client.BaseAddress = new Uri("https://api.anthropic.com");
     client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+    client.Timeout = TimeSpan.FromSeconds(20);
 });
 builder.Services.AddScoped<IDocumentClassifierService, DocumentClassifierService>();
 

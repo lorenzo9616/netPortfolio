@@ -1,16 +1,30 @@
+using System.Text.Json.Serialization;
+
 namespace OcrApi.Services;
 
-public record SuggestedProperty(
-    string Name,
-    string DataType,
-    string SearchHeuristic,
-    bool IsRegex
-);
+public record SuggestedProperty
+{
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = string.Empty;
 
-public record ClassificationResult(
-    string DocumentType,
-    List<SuggestedProperty> SuggestedProperties
-);
+    [JsonPropertyName("dataType")]
+    public string DataType { get; init; } = string.Empty;
+
+    [JsonPropertyName("searchHeuristic")]
+    public string SearchHeuristic { get; init; } = string.Empty;
+
+    [JsonPropertyName("isRegex")]
+    public bool IsRegex { get; init; }
+}
+
+public record ClassificationResult
+{
+    [JsonPropertyName("documentType")]
+    public string DocumentType { get; init; } = "Unknown";
+
+    [JsonPropertyName("suggestedProperties")]
+    public List<SuggestedProperty> SuggestedProperties { get; init; } = new();
+}
 
 public interface IDocumentClassifierService
 {

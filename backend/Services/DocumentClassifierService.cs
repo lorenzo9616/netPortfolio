@@ -4,8 +4,7 @@ namespace OcrApi.Services;
 
 public class DocumentClassifierService : IDocumentClassifierService
 {
-    private static readonly ClassificationResult _emptyResult =
-        new("Unknown", new List<SuggestedProperty>());
+    private static readonly ClassificationResult _emptyResult = new();
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
@@ -65,12 +64,13 @@ public class DocumentClassifierService : IDocumentClassifierService
         try
         {
             var client = _httpClientFactory.CreateClient("anthropic");
-            client.DefaultRequestHeaders.Add("x-api-key", apiKey);
 
-            var json    = JsonSerializer.Serialize(requestBody);
-            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var json = JsonSerializer.Serialize(requestBody);
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/messages");
+            request.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            request.Headers.Add("x-api-key", apiKey);
 
-            var response     = await client.PostAsync("/v1/messages", content, ct);
+            var response     = await client.SendAsync(request, ct);
             var responseBody = await response.Content.ReadAsStringAsync(ct);
 
             if (!response.IsSuccessStatusCode)
@@ -87,8 +87,17 @@ public class DocumentClassifierService : IDocumentClassifierService
                 .GetProperty("text")
                 .GetString() ?? "{}";
 
+            var cleaned = textContent.Trim();
+            if (cleaned.StartsWith("```"))
+            {
+                var newline = cleaned.IndexOf('\n');
+                if (newline >= 0) cleaned = cleaned[(newline + 1)..];
+                var lastFence = cleaned.LastIndexOf("```");
+                if (lastFence >= 0) cleaned = cleaned[..lastFence].Trim();
+            }
+
             var opts   = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var result = JsonSerializer.Deserialize<ClassificationResult>(textContent, opts);
+            var result = JsonSerializer.Deserialize<ClassificationResult>(cleaned, opts);
 
             return result ?? _emptyResult;
         }
