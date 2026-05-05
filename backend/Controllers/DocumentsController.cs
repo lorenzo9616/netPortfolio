@@ -60,11 +60,22 @@ public class DocumentsController : ControllerBase
             .OrderByDescending(r => r.AnalyzedAt)
             .Select(r => new DocumentSummaryDto
             {
-                Id         = r.Id,
-                FileName   = r.FileName,
-                AnalyzedAt = r.AnalyzedAt,
-                FieldCount = r.Fields.Count,
-                PageCount  = r.Pages.Count,
+                Id           = r.Id,
+                FileName     = r.FileName,
+                AnalyzedAt   = r.AnalyzedAt,
+                DocumentType = r.DocumentType,
+                FieldCount   = r.Fields.Count,
+                PageCount    = r.Pages.Count,
+                Fields       = r.Fields
+                    .Where(f => f.ExtractedValue != null && f.ExtractedValue != "")
+                    .OrderBy(f => f.PropertyName)
+                    .Select(f => new DocumentFieldSummaryDto
+                    {
+                        PropertyName   = f.PropertyName,
+                        ExtractedValue = f.ExtractedValue,
+                        Confidence     = f.Confidence,
+                    })
+                    .ToList(),
             })
             .ToListAsync(ct);
 

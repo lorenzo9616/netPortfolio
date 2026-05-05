@@ -114,13 +114,22 @@ public class TableBlockDto
 
 // ── GET /api/documents response ───────────────────────────────────────────────
 
+public class DocumentFieldSummaryDto
+{
+    public string PropertyName { get; set; } = string.Empty;
+    public string? ExtractedValue { get; set; }
+    public double Confidence { get; set; }
+}
+
 public class DocumentSummaryDto
 {
     public int Id { get; set; }
     public string FileName { get; set; } = string.Empty;
     public DateTime AnalyzedAt { get; set; }
+    public string? DocumentType { get; set; }
     public int FieldCount { get; set; }
     public int PageCount { get; set; }
+    public List<DocumentFieldSummaryDto> Fields { get; set; } = new();
 }
 
 // ── GET /api/documents/{id} response ─────────────────────────────────────────
