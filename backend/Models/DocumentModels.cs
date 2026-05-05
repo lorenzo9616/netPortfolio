@@ -29,6 +29,23 @@ public class BoundingBox
     public int Height { get; set; }
 }
 
+public class OcrTableCell
+{
+    public int Row { get; set; }
+    public int Col { get; set; }
+    public string Text { get; set; } = string.Empty;
+    public BoundingBox BoundingBox { get; set; } = new();
+}
+
+public class OcrTableBlock
+{
+    public int Page { get; set; }
+    public int Rows { get; set; }
+    public int Cols { get; set; }
+    public List<OcrTableCell> Cells { get; set; } = new();
+    public BoundingBox BoundingBox { get; set; } = new();
+}
+
 public class ExtractTextResponse
 {
     public bool Success { get; set; }
@@ -37,6 +54,8 @@ public class ExtractTextResponse
     public string RawText { get; set; } = string.Empty;
     public float ProcessingTimeMs { get; set; }
     public List<string> PageImages { get; set; } = new();
+    public string? SignatureImage { get; set; }
+    public List<OcrTableBlock> TableBlocks { get; set; } = new();
 }
 
 // ── Field extraction types ────────────────────────────────────────────────────
@@ -76,6 +95,23 @@ public class TextBlockDto
     public int BboxHeight { get; set; }
 }
 
+// ── Table block DTOs (returned to frontend) ───────────────────────────────────
+
+public class TableCellDto
+{
+    public int Row { get; set; }
+    public int Col { get; set; }
+    public string Text { get; set; } = string.Empty;
+}
+
+public class TableBlockDto
+{
+    public int Page { get; set; }
+    public int Rows { get; set; }
+    public int Cols { get; set; }
+    public List<TableCellDto> Cells { get; set; } = new();
+}
+
 // ── GET /api/documents response ───────────────────────────────────────────────
 
 public class DocumentSummaryDto
@@ -98,7 +134,9 @@ public class AnalysisResultDetailDto
     public string FileName { get; set; } = string.Empty;
     public List<TextBlockDto> TextBlocks { get; set; } = new();
     public string? SignatureImage { get; set; }
+    public string? DocumentType { get; set; }
     public int PageCount { get; set; }
+    public List<TableBlockDto> TableBlocks { get; set; } = new();
 }
 
 public class ExtractedFieldDto

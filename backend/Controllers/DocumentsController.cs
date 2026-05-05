@@ -440,6 +440,7 @@ public class DocumentsController : ControllerBase
                 r.AnalyzedAt,
                 r.SignatureImage,
                 r.TableBlocksJson,
+                r.DocumentType,
                 PageCount = r.Pages.Count,
                 Fields = r.Fields.Select(f => new ExtractedFieldDto
                 {
@@ -486,6 +487,7 @@ public class DocumentsController : ControllerBase
             FileName       = raw.FileName,
             RawText        = raw.RawText,
             AnalyzedAt     = raw.AnalyzedAt,
+            DocumentType   = raw.DocumentType,
             PageCount      = raw.PageCount,
             SignatureImage = raw.SignatureImage is not null
                                ? Convert.ToBase64String(raw.SignatureImage)
