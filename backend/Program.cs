@@ -38,6 +38,12 @@ builder.Services.AddHttpClient<IOcrClient, OcrClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(120);
 });
 builder.Services.AddSingleton<IFieldMatcher, FieldMatcher>();
+builder.Services.AddHttpClient("anthropic", client =>
+{
+    client.BaseAddress = new Uri("https://api.anthropic.com");
+    client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+});
+builder.Services.AddScoped<IDocumentClassifierService, DocumentClassifierService>();
 
 // ── CORS (environment-aware — origins read from config) ────────────────────
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins")
