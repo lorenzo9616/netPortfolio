@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -20,8 +21,15 @@ public class DocumentsController : ControllerBase
         "application/pdf"
     };
 
+    private static readonly JsonSerializerOptions _snakeCaseOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy        = JsonNamingPolicy.SnakeCaseLower,
+    };
+
     private readonly IOcrClient _ocrClient;
     private readonly IFieldMatcher _fieldMatcher;
+    private readonly IDocumentClassifierService _classifierService;
     private readonly IOcrPropertyRepository _propertyRepository;
     private readonly OcrDbContext _dbContext;
     private readonly ILogger<DocumentsController> _logger;
@@ -29,12 +37,14 @@ public class DocumentsController : ControllerBase
     public DocumentsController(
         IOcrClient ocrClient,
         IFieldMatcher fieldMatcher,
+        IDocumentClassifierService classifierService,
         IOcrPropertyRepository propertyRepository,
         OcrDbContext dbContext,
         ILogger<DocumentsController> logger)
     {
         _ocrClient          = ocrClient;
         _fieldMatcher       = fieldMatcher;
+        _classifierService  = classifierService;
         _propertyRepository = propertyRepository;
         _dbContext          = dbContext;
         _logger             = logger;
@@ -99,8 +109,8 @@ public class DocumentsController : ControllerBase
             fileBytes = ms.ToArray();
         }
 
-        var allProperties = await _propertyRepository.GetAllAsync();
-        var activeProperties = allProperties.Where(p => p.IsActive).ToList();
+        var dbProperties     = await _propertyRepository.GetAllAsync();
+        var activeProperties = dbProperties.Where(p => p.IsActive).ToList();
 
         ExtractTextResponse ocrResult;
         try
@@ -125,15 +135,43 @@ public class DocumentsController : ControllerBase
                 "The OCR service is unavailable or returned an error. Please try again later.");
         }
 
-        var extractedFields = _fieldMatcher.MatchFields(activeProperties, ocrResult);
+        var classification  = await _classifierService.ClassifyAsync(ocrResult.RawText, ct);
+        var existingNames   = new HashSet<string>(activeProperties.Select(p => p.Name), StringComparer.OrdinalIgnoreCase);
+        var tempProperties  = classification.SuggestedProperties
+            .Where(sp => !existingNames.Contains(sp.Name))
+            .Select(sp => new OcrProperty
+            {
+                Id              = 0,
+                Name            = sp.Name,
+                DataType        = sp.DataType,
+                SearchHeuristic = sp.SearchHeuristic,
+                IsRegex         = sp.IsRegex,
+                IsActive        = true,
+                CreatedAt       = DateTime.UtcNow,
+                UpdatedAt       = DateTime.UtcNow,
+            });
+        var allProperties   = activeProperties.Concat(tempProperties);
+        var extractedFields = _fieldMatcher.MatchFields(allProperties, ocrResult);
+
+        byte[]? autoSignatureBytes = null;
+        if (!string.IsNullOrEmpty(ocrResult.SignatureImage))
+        {
+            try { autoSignatureBytes = Convert.FromBase64String(ocrResult.SignatureImage); }
+            catch (FormatException ex)
+            {
+                _logger.LogWarning(ex, "DocumentsController: auto-detected signature base64 was invalid — skipping");
+            }
+        }
 
         var analysisResult = new AnalysisResult
         {
-            FileName   = file.FileName,
-            RawText    = ocrResult.RawText,
-            AnalyzedAt = DateTime.UtcNow,
-            ImageBytes = fileBytes,
-            Fields     = extractedFields.Select(f => new SavedField
+            FileName       = file.FileName,
+            RawText        = ocrResult.RawText,
+            AnalyzedAt     = DateTime.UtcNow,
+            ImageBytes     = fileBytes,
+            SignatureImage = autoSignatureBytes,
+            DocumentType   = classification.DocumentType,
+            Fields         = extractedFields.Select(f => new SavedField
             {
                 PropertyName   = f.PropertyName,
                 ExtractedValue = f.ExtractedValue,
@@ -163,6 +201,9 @@ public class DocumentsController : ControllerBase
             }
         }
 
+        if (ocrResult.TableBlocks.Count > 0)
+            analysisResult.TableBlocksJson = JsonSerializer.Serialize(ocrResult.TableBlocks);
+
         _dbContext.AnalysisResults.Add(analysisResult);
         await _dbContext.SaveChangesAsync(ct);
 
@@ -176,6 +217,210 @@ public class DocumentsController : ControllerBase
             RawText         = ocrResult.RawText,
             ExtractedFields = extractedFields
         });
+    }
+
+    // ── POST /api/documents/analyze/stream ──────────────────────────────────
+
+    [HttpPost("analyze/stream")]
+    [EnableRateLimiting("ocr-policy")]
+    [Consumes("multipart/form-data")]
+    public async Task AnalyzeStream(
+        IFormFile file,
+        [FromForm] AnalyzeDocumentRequest request,
+        CancellationToken ct)
+    {
+        Response.ContentType             = "text/event-stream; charset=utf-8";
+        Response.Headers["Cache-Control"]      = "no-cache";
+        Response.Headers["X-Accel-Buffering"]  = "no";
+
+        async Task WriteEventAsync(string eventType, object data)
+        {
+            var payload = $"event: {eventType}\ndata: {JsonSerializer.Serialize(data)}\n\n";
+            var bytes   = System.Text.Encoding.UTF8.GetBytes(payload);
+            await Response.Body.WriteAsync(bytes, ct);
+            await Response.Body.FlushAsync(ct);
+        }
+
+        try
+        {
+            if (file is null || file.Length == 0)
+            {
+                await WriteEventAsync("error", new { message = "A non-empty file is required." });
+                return;
+            }
+
+            var contentType = file.ContentType?.Trim();
+            if (string.IsNullOrEmpty(contentType) || !_allowedContentTypes.Contains(contentType))
+            {
+                await WriteEventAsync("error", new { message = $"Unsupported file type '{contentType}'." });
+                return;
+            }
+
+            byte[] fileBytes;
+            using (var ms = new MemoryStream())
+            {
+                await file.CopyToAsync(ms, ct);
+                fileBytes = ms.ToArray();
+            }
+
+            var dbProperties     = await _propertyRepository.GetAllAsync();
+            var activeProperties = dbProperties.Where(p => p.IsActive).ToList();
+
+            using var ocrResponse = await _ocrClient.ExtractTextStreamAsync(
+                new MemoryStream(fileBytes),
+                file.FileName,
+                contentType,
+                request.CropX, request.CropY, request.CropWidth, request.CropHeight,
+                request.Lang,
+                ct);
+
+            if (!ocrResponse.IsSuccessStatusCode)
+            {
+                await WriteEventAsync("error", new { message = "The OCR service returned an error." });
+                return;
+            }
+
+            using var bodyStream = await ocrResponse.Content.ReadAsStreamAsync(ct);
+            using var reader     = new System.IO.StreamReader(bodyStream);
+
+            string? currentEvent = null;
+            string? currentData  = null;
+
+            while (!reader.EndOfStream && !ct.IsCancellationRequested)
+            {
+                var line = await reader.ReadLineAsync();
+                if (line is null) break;
+
+                if (line.StartsWith("event: ", StringComparison.Ordinal))
+                    currentEvent = line[7..].Trim();
+                else if (line.StartsWith("data: ", StringComparison.Ordinal))
+                    currentData = line[6..].Trim();
+                else if (line.Length == 0 && currentEvent is not null && currentData is not null)
+                {
+                    if (currentEvent is "status" or "error")
+                    {
+                        var raw   = $"event: {currentEvent}\ndata: {currentData}\n\n";
+                        var bytes = System.Text.Encoding.UTF8.GetBytes(raw);
+                        await Response.Body.WriteAsync(bytes, ct);
+                        await Response.Body.FlushAsync(ct);
+                    }
+                    else if (currentEvent == "complete")
+                    {
+                        var ocrResult = JsonSerializer.Deserialize<ExtractTextResponse>(currentData, _snakeCaseOptions);
+
+                        if (ocrResult is not null)
+                        {
+                            await WriteEventAsync("status", new { step = "classifying", message = "Classifying document type with AI..." });
+
+                            var classification = await _classifierService.ClassifyAsync(ocrResult.RawText, ct);
+                            var existingNames  = new HashSet<string>(activeProperties.Select(p => p.Name), StringComparer.OrdinalIgnoreCase);
+                            var tempProperties = classification.SuggestedProperties
+                                .Where(sp => !existingNames.Contains(sp.Name))
+                                .Select(sp => new OcrProperty
+                                {
+                                    Id              = 0,
+                                    Name            = sp.Name,
+                                    DataType        = sp.DataType,
+                                    SearchHeuristic = sp.SearchHeuristic,
+                                    IsRegex         = sp.IsRegex,
+                                    IsActive        = true,
+                                    CreatedAt       = DateTime.UtcNow,
+                                    UpdatedAt       = DateTime.UtcNow,
+                                })
+                                .ToList();
+
+                            if (classification.DocumentType != "Unknown" || tempProperties.Count > 0)
+                            {
+                                var typeLabel = classification.DocumentType == "Unknown"
+                                    ? "Document type detected"
+                                    : $"{classification.DocumentType} detected";
+                                var suffix = tempProperties.Count > 0
+                                    ? $" — adding {tempProperties.Count} additional {(tempProperties.Count == 1 ? "field" : "fields")}"
+                                    : string.Empty;
+                                await WriteEventAsync("status", new { step = "type_detected", message = $"{typeLabel}{suffix}" });
+                            }
+
+                            await WriteEventAsync("status", new { step = "saving", message = "Saving results to database" });
+
+                            var allProperties   = activeProperties.Concat(tempProperties);
+                            var extractedFields = _fieldMatcher.MatchFields(allProperties, ocrResult);
+
+                            byte[]? autoSignatureBytes = null;
+                            if (!string.IsNullOrEmpty(ocrResult.SignatureImage))
+                            {
+                                try { autoSignatureBytes = Convert.FromBase64String(ocrResult.SignatureImage); }
+                                catch (FormatException ex)
+                                {
+                                    _logger.LogWarning(ex, "AnalyzeStream: invalid signature base64 — skipping");
+                                }
+                            }
+
+                            var analysisResult = new AnalysisResult
+                            {
+                                FileName       = file.FileName,
+                                RawText        = ocrResult.RawText,
+                                AnalyzedAt     = DateTime.UtcNow,
+                                ImageBytes     = fileBytes,
+                                SignatureImage = autoSignatureBytes,
+                                DocumentType   = classification.DocumentType,
+                                Fields         = extractedFields.Select(f => new SavedField
+                                {
+                                    PropertyName   = f.PropertyName,
+                                    ExtractedValue = f.ExtractedValue,
+                                    Confidence     = f.Confidence,
+                                }).ToList(),
+                                TextBlocks = ocrResult.TextBlocks.Select(b => new SavedTextBlock
+                                {
+                                    Text       = b.Text,
+                                    Confidence = b.Confidence,
+                                    Page       = b.Page,
+                                    BboxX      = b.BoundingBox.X,
+                                    BboxY      = b.BoundingBox.Y,
+                                    BboxWidth  = b.BoundingBox.Width,
+                                    BboxHeight = b.BoundingBox.Height,
+                                }).ToList(),
+                            };
+
+                            for (int i = 0; i < ocrResult.PageImages.Count; i++)
+                            {
+                                if (!string.IsNullOrEmpty(ocrResult.PageImages[i]))
+                                {
+                                    analysisResult.Pages.Add(new DocumentPage
+                                    {
+                                        PageNumber = i + 1,
+                                        ImageBytes = Convert.FromBase64String(ocrResult.PageImages[i]),
+                                    });
+                                }
+                            }
+
+                            if (ocrResult.TableBlocks.Count > 0)
+                                analysisResult.TableBlocksJson = JsonSerializer.Serialize(ocrResult.TableBlocks);
+
+                            _dbContext.AnalysisResults.Add(analysisResult);
+                            await _dbContext.SaveChangesAsync(ct);
+
+                            _logger.LogInformation(
+                                "AnalyzeStream: saved AnalysisResult.Id={Id}", analysisResult.Id);
+
+                            await WriteEventAsync("done", new { documentId = analysisResult.Id });
+                        }
+                    }
+
+                    currentEvent = null;
+                    currentData  = null;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Client disconnected — normal.
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AnalyzeStream: unexpected error");
+            try { await WriteEventAsync("error", new { message = "An unexpected error occurred." }); }
+            catch { /* response may already be closed */ }
+        }
     }
 
     // ── GET /api/documents/{id} ──────────────────────────────────────────────
@@ -194,6 +439,7 @@ public class DocumentsController : ControllerBase
                 r.RawText,
                 r.AnalyzedAt,
                 r.SignatureImage,
+                r.TableBlocksJson,
                 PageCount = r.Pages.Count,
                 Fields = r.Fields.Select(f => new ExtractedFieldDto
                 {
@@ -218,6 +464,22 @@ public class DocumentsController : ControllerBase
         if (raw is null)
             return NotFound($"No analysis result found with id {id}.");
 
+        var tableBlocks = string.IsNullOrEmpty(raw.TableBlocksJson)
+            ? new List<TableBlockDto>()
+            : (JsonSerializer.Deserialize<List<OcrTableBlock>>(raw.TableBlocksJson, _snakeCaseOptions)
+                   ?.Select(tb => new TableBlockDto
+                   {
+                       Page  = tb.Page,
+                       Rows  = tb.Rows,
+                       Cols  = tb.Cols,
+                       Cells = tb.Cells.Select(c => new TableCellDto
+                       {
+                           Row  = c.Row,
+                           Col  = c.Col,
+                           Text = c.Text,
+                       }).ToList(),
+                   }).ToList() ?? new List<TableBlockDto>());
+
         var dto = new AnalysisResultDetailDto
         {
             DocumentId     = raw.Id,
@@ -230,6 +492,7 @@ public class DocumentsController : ControllerBase
                                : null,
             ExtractedFields = raw.Fields,
             TextBlocks      = raw.TextBlocks,
+            TableBlocks     = tableBlocks,
         };
 
         return Ok(dto);
