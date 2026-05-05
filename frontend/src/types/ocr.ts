@@ -10,7 +10,7 @@ export interface UploadState {
   previewUrl: string | null;
   imageDimensions: { width: number; height: number } | null;
   cropRegion: CropRegion | null;
-  isCapturing: boolean; // camera mode active
+  isCapturing: boolean;
 }
 
 export interface ExtractedField {
@@ -40,23 +40,46 @@ export interface OcrTextBlock {
   bboxHeight: number;
 }
 
+export interface TableCell {
+  row: number;
+  col: number;
+  text: string;
+}
+
+export interface TableBlock {
+  page: number;
+  rows: number;
+  cols: number;
+  cells: TableCell[];
+}
+
 export interface AnalysisResultDetail {
   documentId: number;
   extractedFields: ExtractedField[];
   rawText: string;
   analyzedAt: string;
   fileName: string;
+  documentType: string | null;
   textBlocks: OcrTextBlock[];
   signatureImage: string | null;
   pageCount: number;
+  tableBlocks: TableBlock[];
+}
+
+export interface DocumentFieldSummary {
+  propertyName: string;
+  extractedValue: string | null;
+  confidence: number;
 }
 
 export interface DocumentSummary {
   id: number;
   fileName: string;
   analyzedAt: string;
+  documentType: string | null;
   fieldCount: number;
   pageCount: number;
+  fields: DocumentFieldSummary[];
 }
 
 export interface OcrProperty {
