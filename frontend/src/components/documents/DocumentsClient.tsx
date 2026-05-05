@@ -50,7 +50,7 @@ export default function DocumentsClient({ documents }: Props) {
             <th className="px-4 py-3">Document Name</th>
             <th className="px-4 py-3">Type</th>
             <th className="px-4 py-3">Analyzed Date</th>
-            <th className="px-4 py-3">Fields Extracted</th>
+            <th className="px-4 py-3">Fields</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
@@ -66,17 +66,32 @@ export default function DocumentsClient({ documents }: Props) {
                 <tr
                   className="cursor-pointer transition-colors hover:bg-gray-50"
                   onClick={() => setExpandedId(isExpanded ? null : doc.id)}
-                  aria-expanded={isExpanded}
+                  tabIndex={0}
+                  role="button"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setExpandedId(isExpanded ? null : doc.id);
+                    }
+                  }}
                 >
-                  <td className="px-4 py-3 text-gray-400">
-                    <svg
-                      className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      aria-hidden="true"
+                  <td className="px-4 py-3">
+                    <button
+                      aria-expanded={isExpanded}
+                      aria-label={isExpanded ? `Collapse ${doc.fileName}` : `Expand ${doc.fileName}`}
+                      tabIndex={-1}
+                      className="flex items-center rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : doc.id); }}
                     >
-                      <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                    </svg>
+                      <svg
+                        className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </button>
                   </td>
                   <td className="max-w-xs truncate px-4 py-3 font-medium text-gray-800" title={doc.fileName}>
                     {doc.fileName}
@@ -91,7 +106,7 @@ export default function DocumentsClient({ documents }: Props) {
                     )}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-gray-600">{analyzedDate}</td>
-                  <td className="px-4 py-3 text-gray-600">{doc.fieldCount}</td>
+                  <td className="px-4 py-3 text-gray-600">{doc.fields.length}</td>
                 </tr>
 
                 {isExpanded && (
