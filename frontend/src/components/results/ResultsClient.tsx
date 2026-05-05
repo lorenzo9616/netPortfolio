@@ -6,6 +6,8 @@ import type { AnalysisResultDetail, SavedFieldUpdate } from '@/types/ocr';
 import { saveFieldOverrides, captureSignature, ApiError } from '@/lib/api';
 import SignatureCanvas from './SignatureCanvas';
 import OcrTokensTable from './OcrTokensTable';
+import BoundingBoxOverlay from './BoundingBoxOverlay';
+import TableBlocksView from './TableBlocksView';
 
 interface Props {
   result: AnalysisResultDetail;
@@ -35,22 +37,20 @@ export default function ResultsClient({ result }: Props) {
     return initial;
   });
 
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [saveError, setSaveError] = useState('');
-  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isSaving, setIsSaving]       = useState(false);
+  const [saveStatus, setSaveStatus]   = useState<'idle' | 'success' | 'error'>('idle');
+  const [saveError, setSaveError]     = useState('');
+  const dismissTimerRef               = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [signatureImage, setSignatureImage] = useState<string | null>(
     result.signatureImage ?? null,
   );
-  const [isCapturing, setIsCapturing] = useState(false);
+  const [isCapturing, setIsCapturing]   = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
 
-  // Page navigation for multi-page documents
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage]     = useState(1);
+  const [previewMode, setPreviewMode]     = useState<'overlay' | 'capture'>('overlay');
 
-  // Compute imageUrl client-side only to avoid SSR/hydration mismatch.
-  // Use per-page endpoint when page images were stored; fall back to legacy endpoint.
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   useEffect(() => {
     const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
@@ -78,7 +78,7 @@ export default function ResultsClient({ result }: Props) {
     setSaveStatus('idle');
     setSaveError('');
     const payload: SavedFieldUpdate[] = result.extractedFields.map((f) => ({
-      propertyName: f.propertyName,
+      propertyName:   f.propertyName,
       manualOverride: overrides[f.propertyName] ?? null,
     }));
     try {
@@ -87,7 +87,7 @@ export default function ResultsClient({ result }: Props) {
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message
-        : err instanceof Error ? err.message
+        : err instanceof Error  ? err.message
         : 'An unexpected error occurred while saving.';
       setSaveError(message);
       setSaveStatus('error');
@@ -105,7 +105,7 @@ export default function ResultsClient({ result }: Props) {
     } catch (err) {
       setCaptureError(
         err instanceof ApiError ? err.message
-        : err instanceof Error ? err.message
+        : err instanceof Error  ? err.message
         : 'Capture failed.',
       );
     } finally {
@@ -115,8 +115,8 @@ export default function ResultsClient({ result }: Props) {
 
   function triggerDownload(blob: Blob, filename: string) {
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
+    const a   = document.createElement('a');
+    a.href     = url;
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
@@ -124,8 +124,8 @@ export default function ResultsClient({ result }: Props) {
 
   function handleExportJson() {
     const data = result.extractedFields.map((f) => ({
-      field: f.propertyName,
-      value: overrides[f.propertyName] || f.extractedValue || null,
+      field:      f.propertyName,
+      value:      overrides[f.propertyName] || f.extractedValue || null,
       confidence: Math.round(f.confidence * 100),
     }));
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -134,7 +134,7 @@ export default function ResultsClient({ result }: Props) {
 
   function handleExportCsv() {
     const header = 'Field,Value,Confidence %';
-    const rows = result.extractedFields.map((f) => {
+    const rows   = result.extractedFields.map((f) => {
       const val = (overrides[f.propertyName] || f.extractedValue || '').replace(/"/g, '""');
       return `"${f.propertyName}","${val}",${Math.round(f.confidence * 100)}`;
     });
@@ -147,9 +147,11 @@ export default function ResultsClient({ result }: Props) {
     timeStyle: 'short',
   });
 
+  const effectivePageCount = result.pageCount > 0 ? result.pageCount : 1;
+
   return (
     <div className="flex flex-col gap-8">
-      {/* ── Top row: extracted fields (left) + document image (right) ─────── */}
+      {/* ── Top row: extracted fields (left) + document preview (right) ──────── */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
 
         {/* ── Extracted fields ──────────────────────────────────────────────── */}
@@ -165,52 +167,101 @@ export default function ResultsClient({ result }: Props) {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-              <table className="min-w-full divide-y divide-gray-100 text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    <th className="px-4 py-3">Field Name</th>
-                    <th className="px-4 py-3">Extracted Value</th>
-                    <th className="px-4 py-3">Manual Override</th>
-                    <th className="px-4 py-3 text-right">Confidence</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {result.extractedFields.map((field) => (
-                    <tr key={field.propertyName} className="align-middle">
-                      <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-800">
-                        {field.propertyName}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">
-                        {field.extractedValue ?? <span className="italic text-gray-400">—</span>}
-                      </td>
-                      <td className="px-4 py-3">
-                        {field.propertyName === 'Signature' && signatureImage ? (
-                          <img
-                            src={`data:image/png;base64,${signatureImage}`}
-                            alt="Captured signature"
-                            className="max-h-16 rounded border border-gray-200"
-                          />
-                        ) : (
-                          <input
-                            type="text"
-                            aria-label={`Manual override for ${field.propertyName}`}
-                            value={overrides[field.propertyName] ?? ''}
-                            onChange={(e) => handleOverrideChange(field.propertyName, e.target.value)}
-                            disabled={isSaving}
-                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-50"
-                            placeholder="Enter override…"
-                          />
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <ConfidenceBadge value={field.confidence} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {(() => {
+                const filledFields = result.extractedFields.filter(
+                  (f) => f.extractedValue !== null && f.extractedValue !== ''
+                );
+                const emptyFields = result.extractedFields.filter(
+                  (f) => f.extractedValue === null || f.extractedValue === ''
+                );
+
+                const renderRows = (fields: typeof result.extractedFields) =>
+                  fields.map((field) => {
+                    const isSignatureField = field.propertyName === 'Signature';
+                    return (
+                      <tr key={field.propertyName} className="align-middle">
+                        <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-800">
+                          {field.propertyName}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {isSignatureField && signatureImage
+                            ? <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">Auto-detected</span>
+                            : (field.extractedValue ?? <span className="italic text-gray-400">—</span>)
+                          }
+                        </td>
+                        <td className="px-4 py-3">
+                          {isSignatureField
+                            ? <span className="text-xs italic text-gray-400">See preview above</span>
+                            : (
+                              <input
+                                type="text"
+                                aria-label={`Manual override for ${field.propertyName}`}
+                                value={overrides[field.propertyName] ?? ''}
+                                onChange={(e) => handleOverrideChange(field.propertyName, e.target.value)}
+                                disabled={isSaving}
+                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-50"
+                                placeholder="Enter override…"
+                              />
+                            )
+                          }
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <ConfidenceBadge value={field.confidence} />
+                        </td>
+                      </tr>
+                    );
+                  });
+
+                return (
+                  <div className="flex flex-col gap-3">
+                    {filledFields.length > 0 && (
+                      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                        <table className="min-w-full divide-y divide-gray-100 text-sm">
+                          <thead>
+                            <tr className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              <th className="px-4 py-3">Field Name</th>
+                              <th className="px-4 py-3">Extracted Value</th>
+                              <th className="px-4 py-3">Manual Override</th>
+                              <th className="px-4 py-3 text-right">Confidence</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {renderRows(filledFields)}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {emptyFields.length > 0 && (
+                      <details className="group rounded-xl border border-gray-200 bg-white">
+                        <summary className="cursor-pointer select-none px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400 hover:text-gray-600 focus:outline-none list-none flex items-center gap-2">
+                          <svg className="h-3.5 w-3.5 transition-transform group-open:rotate-90" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                          </svg>
+                          {emptyFields.length} empty {emptyFields.length === 1 ? 'field' : 'fields'}
+                        </summary>
+                        <div className="border-t border-gray-100">
+                          <table className="min-w-full divide-y divide-gray-100 text-sm">
+                            <thead>
+                              <tr className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                <th className="px-4 py-3">Field Name</th>
+                                <th className="px-4 py-3">Extracted Value</th>
+                                <th className="px-4 py-3">Manual Override</th>
+                                <th className="px-4 py-3 text-right">Confidence</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {renderRows(emptyFields)}
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                );
+              })()}
+            </>
           )}
 
           {/* Action buttons */}
@@ -267,7 +318,7 @@ export default function ResultsClient({ result }: Props) {
           </div>
         </section>
 
-        {/* ── Document image + signature canvas ─────────────────────────────── */}
+        {/* ── Document preview ─────────────────────────────────────────────────── */}
         <section aria-label="Document preview and signature capture">
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
             Document Preview
@@ -295,17 +346,80 @@ export default function ResultsClient({ result }: Props) {
               </dl>
             </div>
 
-            {/* Interactive signature canvas — imageUrl is null until client hydrates */}
+            {/* Auto-detected signature preview */}
+            {signatureImage && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-200">
+                    Auto-detected
+                  </span>
+                  <span className="text-xs font-medium text-emerald-800">Signature</span>
+                </div>
+                <img
+                  src={`data:image/jpeg;base64,${signatureImage}`}
+                  alt="Auto-detected signature"
+                  className="max-h-24 rounded border border-emerald-200 bg-white"
+                />
+              </div>
+            )}
+
+            {/* Mode toggle */}
             {imageUrl && (
-              <SignatureCanvas
+              <div className="flex gap-0.5 self-start rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode('overlay')}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    previewMode === 'overlay'
+                      ? 'bg-white text-gray-800 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Word Overlay
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode('capture')}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    previewMode === 'capture'
+                      ? 'bg-white text-gray-800 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Capture Signature
+                </button>
+              </div>
+            )}
+
+            {/* Word overlay */}
+            {imageUrl && previewMode === 'overlay' && (
+              <BoundingBoxOverlay
                 imageUrl={imageUrl}
-                onCapture={handleCapture}
-                isSaving={isCapturing}
-                captureError={captureError}
-                pageCount={result.pageCount}
+                blocks={result.textBlocks}
                 currentPage={currentPage}
+                pageCount={effectivePageCount}
                 onPageChange={setCurrentPage}
               />
+            )}
+
+            {/* Signature capture canvas */}
+            {imageUrl && previewMode === 'capture' && (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs font-medium text-gray-500">
+                  {signatureImage
+                    ? 'Re-capture signature (draw a box over the signature area):'
+                    : 'Capture signature manually:'}
+                </p>
+                <SignatureCanvas
+                  imageUrl={imageUrl}
+                  onCapture={handleCapture}
+                  isSaving={isCapturing}
+                  captureError={captureError}
+                  pageCount={result.pageCount}
+                  currentPage={currentPage}
+                  onPageChange={setCurrentPage}
+                />
+              </div>
             )}
 
             {/* Raw OCR text — collapsed by default */}
@@ -328,8 +442,9 @@ export default function ResultsClient({ result }: Props) {
         </section>
       </div>
 
-      {/* ── OCR tokens table (full width below) ───────────────────────────── */}
+      {/* ── OCR tokens + detected tables (full width below) ───────────────────── */}
       <OcrTokensTable blocks={result.textBlocks} />
+      <TableBlocksView tables={result.tableBlocks ?? []} />
     </div>
   );
 }
