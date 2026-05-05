@@ -335,6 +335,16 @@ export default function ResultsClient({ result }: Props) {
                   <dt className="font-medium text-gray-600">Analyzed:</dt>
                   <dd>{analyzedDate}</dd>
                 </div>
+                {result.documentType && result.documentType !== 'Unknown' && (
+                  <div className="flex gap-1">
+                    <dt className="font-medium text-gray-600">Type:</dt>
+                    <dd>
+                      <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-200">
+                        {result.documentType}
+                      </span>
+                    </dd>
+                  </div>
+                )}
                 <div className="flex gap-1">
                   <dt className="font-medium text-gray-600">Fields:</dt>
                   <dd>{result.extractedFields.length} {result.extractedFields.length === 1 ? 'field' : 'fields'} extracted</dd>
