@@ -56,6 +56,11 @@ public class OcrDbContext : DbContext
             entity.Property(e => e.AnalyzedAt).HasDefaultValueSql("NOW()");
             entity.Property(e => e.ImageBytes).IsRequired(false);
             entity.Property(e => e.SignatureImage).IsRequired(false);
+            entity.Property(e => e.TableBlocksJson).IsRequired(false);
+
+            entity.Property(e => e.DocumentType)
+                  .IsRequired(false)
+                  .HasMaxLength(100);
 
             entity.HasMany(e => e.Fields)
                   .WithOne(f => f.AnalysisResult)
@@ -325,6 +330,195 @@ public class OcrDbContext : DbContext
                 IsActive        = true,
                 CreatedAt       = new DateTime(2026, 4, 28, 0, 0, 0, DateTimeKind.Utc),
                 UpdatedAt       = new DateTime(2026, 4, 29, 0, 0, 0, DateTimeKind.Utc)
+            },
+
+            // ── Invoice (MCLARN TRT pattern) ──────────────────────────────────────
+            new OcrProperty
+            {
+                Id              = 21,
+                Name            = "DocumentDate",
+                DataType        = "date",
+                SearchHeuristic = @"DATE[\s:]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 22,
+                Name            = "BillFromCompany",
+                DataType        = "string",
+                SearchHeuristic = @"Bill\s*From:\s+([^\n\r]+)",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 23,
+                Name            = "BillToCompany",
+                DataType        = "string",
+                SearchHeuristic = @"Bill\s*To:\s+([^\n\r]+)",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 24,
+                Name            = "BillToContact",
+                DataType        = "string",
+                SearchHeuristic = @"Attn:\s*([^\n\r]+)",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 25,
+                Name            = "ServiceDateRange",
+                DataType        = "string",
+                SearchHeuristic = @"(\d{1,2}\/\d{1,2}\/\d{2,4}\s*-\s*\d{1,2}\/\d{1,2}\/\d{2,4})",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 26,
+                Name            = "HourlyRate",
+                DataType        = "decimal",
+                SearchHeuristic = @"Services\s+\$(\d+(?:\.\d{2})?)",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 27,
+                Name            = "TotalHours",
+                DataType        = "number",
+                SearchHeuristic = @"\$\d+(?:\.\d{2})?\s+(\d{3,})",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 28,
+                Name            = "InvoiceTotal",
+                DataType        = "decimal",
+                SearchHeuristic = @"Total:\s*\$?([\d,]+(?:\.\d{2})?)",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 29,
+                Name            = "PaymentDate",
+                DataType        = "date",
+                SearchHeuristic = @"(\d{1,2}\/\d{1,2}\/\d{4})\s+Payment",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 30,
+                Name            = "PaymentAmount",
+                DataType        = "decimal",
+                SearchHeuristic = @"Payment\s+\$?([\d,]+(?:\.\d{2})?)",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 31,
+                Name            = "OutstandingBalance",
+                DataType        = "decimal",
+                SearchHeuristic = @"Balance\s+\$?([\d,]+(?:\.\d{2})?)",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 32,
+                Name            = "BankName",
+                DataType        = "string",
+                SearchHeuristic = @"Bank:\s+([^\n\r]+)",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 33,
+                Name            = "SwiftCode",
+                DataType        = "string",
+                SearchHeuristic = @"Swift\s*(?:code|Code|CODE):\s*([A-Z0-9]+)",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 34,
+                Name            = "BankAccountName",
+                DataType        = "string",
+                SearchHeuristic = @"Account\s*Name:\s*([^\n\r]+)",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 35,
+                Name            = "SignatoryName",
+                DataType        = "string",
+                SearchHeuristic = @"([^\n]+)\n(?:President|Director|CEO|CFO|COO|Manager|Officer|Secretary|Chairman|VP|Treasurer|Principal|Administrator|Partner)",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 36,
+                Name            = "SignatoryTitle",
+                DataType        = "string",
+                SearchHeuristic = @"(President|Director|CEO|CFO|COO|Manager|Officer|Secretary|Chairman|Vice\s+President|VP|Treasurer|Principal|Administrator)",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new OcrProperty
+            {
+                Id              = 37,
+                Name            = "SignatoryCompany",
+                DataType        = "string",
+                SearchHeuristic = @"(?:President|Director|CEO|CFO|COO|Manager|Officer|Secretary|Chairman|VP|Treasurer|Principal|Administrator)\n([^\n]+)",
+                IsRegex         = true,
+                IsActive        = true,
+                CreatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt       = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc)
             }
         );
     }

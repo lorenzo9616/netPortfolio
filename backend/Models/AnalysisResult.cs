@@ -8,6 +8,8 @@ public class AnalysisResult
     public string RawText { get; set; } = string.Empty;
     public byte[]? ImageBytes { get; set; }
     public byte[]? SignatureImage { get; set; }
+    public string? TableBlocksJson { get; set; }
+    public string? DocumentType { get; set; }
     public List<SavedField> Fields { get; set; } = new();
     public List<SavedTextBlock> TextBlocks { get; set; } = new();
     public List<DocumentPage> Pages { get; set; } = new();
