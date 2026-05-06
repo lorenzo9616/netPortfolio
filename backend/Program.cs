@@ -44,7 +44,13 @@ builder.Services.AddHttpClient("anthropic", client =>
     client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
     client.Timeout = TimeSpan.FromSeconds(20);
 });
-builder.Services.AddScoped<IDocumentClassifierService, DocumentClassifierService>();
+
+// Use Anthropic classifier only when an API key is explicitly configured; otherwise rule-based.
+var anthropicKey = builder.Configuration["Anthropic:ApiKey"];
+if (!string.IsNullOrWhiteSpace(anthropicKey))
+    builder.Services.AddScoped<IDocumentClassifierService, DocumentClassifierService>();
+else
+    builder.Services.AddScoped<IDocumentClassifierService, RuleBasedDocumentClassifierService>();
 
 // ── CORS (environment-aware — origins read from config) ────────────────────
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins")
