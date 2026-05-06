@@ -134,6 +134,14 @@ public class DocumentSummaryDto
 
 // ── GET /api/documents/{id} response ─────────────────────────────────────────
 
+public class SignatureDto
+{
+    public int Id { get; set; }
+    public string ImageData { get; set; } = string.Empty; // base64
+    public string? Label { get; set; }
+    public DateTime CapturedAt { get; set; }
+}
+
 public class AnalysisResultDetailDto
 {
     public int DocumentId { get; set; }
@@ -142,7 +150,7 @@ public class AnalysisResultDetailDto
     public DateTime AnalyzedAt { get; set; }
     public string FileName { get; set; } = string.Empty;
     public List<TextBlockDto> TextBlocks { get; set; } = new();
-    public string? SignatureImage { get; set; }
+    public List<SignatureDto> Signatures { get; set; } = new();
     public string? DocumentType { get; set; }
     public int PageCount { get; set; }
     public List<TableBlockDto> TableBlocks { get; set; } = new();
@@ -156,14 +164,10 @@ public class ExtractedFieldDto
     public double Confidence { get; set; }
 }
 
-// ── PATCH /api/documents/{id}/signature ──────────────────────────────────────
+// ── POST /api/documents/{id}/signatures ──────────────────────────────────────
 
 public class SignatureCaptureRequest
 {
     public string ImageData { get; set; } = string.Empty;
-}
-
-public class SignatureCaptureResponse
-{
-    public string ImageData { get; set; } = string.Empty;
+    public string? Label { get; set; }
 }

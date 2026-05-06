@@ -8,6 +8,7 @@ import type {
   ExtractedField,
   AnalysisResultDetail,
   DocumentSummary,
+  SignatureDto,
 } from '@/types/ocr';
 
 // Server-side (RSC/SSR): use API_URL (internal Docker hostname, e.g. http://backend:5000).
@@ -112,16 +113,27 @@ export async function saveFieldOverrides(
   return res.json() as Promise<ExtractedField[]>;
 }
 
-export async function captureSignature(
+export async function addSignature(
   documentId: number,
   imageData: string,
-): Promise<{ imageData: string }> {
-  const res = await fetch(`${API_BASE}/api/documents/${documentId}/signature`, {
-    method: 'PATCH',
+  label?: string | null,
+): Promise<SignatureDto> {
+  const res = await fetch(`${API_BASE}/api/documents/${documentId}/signatures`, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageData }),
+    body: JSON.stringify({ imageData, label: label ?? null }),
   });
-  return handleResponse<{ imageData: string }>(res);
+  return handleResponse<SignatureDto>(res);
+}
+
+export async function deleteSignature(
+  documentId: number,
+  signatureId: number,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/documents/${documentId}/signatures/${signatureId}`, {
+    method: 'DELETE',
+  });
+  return handleResponse<void>(res);
 }
 
 export async function analyzeDocument(
@@ -144,4 +156,67 @@ export async function analyzeDocument(
   });
   if (!res.ok) throw new ApiError(`Analysis failed: ${res.statusText}`, res.status);
   return res.json() as Promise<AnalyzeResponse>;
+}
+
+export async function analyzeDocumentStream(
+  file: File,
+  crop: CropRegion | undefined,
+  lang: string,
+  onProgress: (message: string) => void,
+): Promise<{ documentId: number }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('lang', lang);
+  if (crop) {
+    formData.append('cropX', String(crop.x));
+    formData.append('cropY', String(crop.y));
+    formData.append('cropWidth', String(crop.width));
+    formData.append('cropHeight', String(crop.height));
+  }
+
+  const res = await fetch(`${API_BASE}/api/documents/analyze/stream`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok || !res.body) {
+    throw new ApiError(`Analysis failed: ${res.statusText}`, res.status);
+  }
+
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer    = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    let sep = buffer.indexOf('\n\n');
+    while (sep !== -1) {
+      const chunk = buffer.substring(0, sep);
+      buffer      = buffer.substring(sep + 2);
+      sep         = buffer.indexOf('\n\n');
+
+      const eventType = chunk.match(/^event: (.+)/m)?.[1]?.trim();
+      const dataStr   = chunk.match(/^data: (.+)/m)?.[1]?.trim();
+      if (!eventType || !dataStr) continue;
+
+      if (eventType === 'status') {
+        try {
+          const d = JSON.parse(dataStr) as { message: string };
+          onProgress(d.message);
+        } catch { /* malformed — skip */ }
+      } else if (eventType === 'done') {
+        const d = JSON.parse(dataStr) as { documentId: number };
+        return { documentId: d.documentId };
+      } else if (eventType === 'error') {
+        const d = JSON.parse(dataStr) as { message: string };
+        throw new ApiError(d.message, 500);
+      }
+    }
+  }
+
+  throw new ApiError('Stream ended without a done event.', 500);
 }

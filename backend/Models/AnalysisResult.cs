@@ -7,12 +7,22 @@ public class AnalysisResult
     public string FileName { get; set; } = string.Empty;
     public string RawText { get; set; } = string.Empty;
     public byte[]? ImageBytes { get; set; }
-    public byte[]? SignatureImage { get; set; }
     public string? TableBlocksJson { get; set; }
     public string? DocumentType { get; set; }
     public List<SavedField> Fields { get; set; } = new();
     public List<SavedTextBlock> TextBlocks { get; set; } = new();
     public List<DocumentPage> Pages { get; set; } = new();
+    public List<DocumentSignature> Signatures { get; set; } = new();
+}
+
+public class DocumentSignature
+{
+    public int Id { get; set; }
+    public int AnalysisResultId { get; set; }
+    public byte[] ImageData { get; set; } = Array.Empty<byte>();
+    public string? Label { get; set; }
+    public DateTime CapturedAt { get; set; } = DateTime.UtcNow;
+    public AnalysisResult AnalysisResult { get; set; } = null!;
 }
 
 public class SavedField

@@ -164,24 +164,13 @@ public class DocumentsController : ControllerBase
         var allProperties   = activeProperties.Concat(tempProperties);
         var extractedFields = _fieldMatcher.MatchFields(allProperties, ocrResult);
 
-        byte[]? autoSignatureBytes = null;
-        if (!string.IsNullOrEmpty(ocrResult.SignatureImage))
-        {
-            try { autoSignatureBytes = Convert.FromBase64String(ocrResult.SignatureImage); }
-            catch (FormatException ex)
-            {
-                _logger.LogWarning(ex, "DocumentsController: auto-detected signature base64 was invalid — skipping");
-            }
-        }
-
         var analysisResult = new AnalysisResult
         {
-            FileName       = file.FileName,
-            RawText        = ocrResult.RawText,
-            AnalyzedAt     = DateTime.UtcNow,
-            ImageBytes     = fileBytes,
-            SignatureImage = autoSignatureBytes,
-            DocumentType   = classification.DocumentType,
+            FileName     = file.FileName,
+            RawText      = ocrResult.RawText,
+            AnalyzedAt   = DateTime.UtcNow,
+            ImageBytes   = fileBytes,
+            DocumentType = classification.DocumentType,
             Fields         = extractedFields.Select(f => new SavedField
             {
                 PropertyName   = f.PropertyName,
@@ -199,6 +188,23 @@ public class DocumentsController : ControllerBase
                 BboxHeight = b.BoundingBox.Height,
             }).ToList(),
         };
+
+        if (!string.IsNullOrEmpty(ocrResult.SignatureImage))
+        {
+            try
+            {
+                analysisResult.Signatures.Add(new DocumentSignature
+                {
+                    ImageData  = Convert.FromBase64String(ocrResult.SignatureImage),
+                    Label      = "Auto-detected",
+                    CapturedAt = DateTime.UtcNow,
+                });
+            }
+            catch (FormatException ex)
+            {
+                _logger.LogWarning(ex, "DocumentsController: auto-detected signature base64 was invalid — skipping");
+            }
+        }
 
         for (int i = 0; i < ocrResult.PageImages.Count; i++)
         {
@@ -356,24 +362,13 @@ public class DocumentsController : ControllerBase
                             var allProperties   = activeProperties.Concat(tempProperties);
                             var extractedFields = _fieldMatcher.MatchFields(allProperties, ocrResult);
 
-                            byte[]? autoSignatureBytes = null;
-                            if (!string.IsNullOrEmpty(ocrResult.SignatureImage))
-                            {
-                                try { autoSignatureBytes = Convert.FromBase64String(ocrResult.SignatureImage); }
-                                catch (FormatException ex)
-                                {
-                                    _logger.LogWarning(ex, "AnalyzeStream: invalid signature base64 — skipping");
-                                }
-                            }
-
                             var analysisResult = new AnalysisResult
                             {
-                                FileName       = file.FileName,
-                                RawText        = ocrResult.RawText,
-                                AnalyzedAt     = DateTime.UtcNow,
-                                ImageBytes     = fileBytes,
-                                SignatureImage = autoSignatureBytes,
-                                DocumentType   = classification.DocumentType,
+                                FileName     = file.FileName,
+                                RawText      = ocrResult.RawText,
+                                AnalyzedAt   = DateTime.UtcNow,
+                                ImageBytes   = fileBytes,
+                                DocumentType = classification.DocumentType,
                                 Fields         = extractedFields.Select(f => new SavedField
                                 {
                                     PropertyName   = f.PropertyName,
@@ -391,6 +386,23 @@ public class DocumentsController : ControllerBase
                                     BboxHeight = b.BoundingBox.Height,
                                 }).ToList(),
                             };
+
+                            if (!string.IsNullOrEmpty(ocrResult.SignatureImage))
+                            {
+                                try
+                                {
+                                    analysisResult.Signatures.Add(new DocumentSignature
+                                    {
+                                        ImageData  = Convert.FromBase64String(ocrResult.SignatureImage),
+                                        Label      = "Auto-detected",
+                                        CapturedAt = DateTime.UtcNow,
+                                    });
+                                }
+                                catch (FormatException ex)
+                                {
+                                    _logger.LogWarning(ex, "AnalyzeStream: invalid signature base64 — skipping");
+                                }
+                            }
 
                             for (int i = 0; i < ocrResult.PageImages.Count; i++)
                             {
@@ -449,10 +461,16 @@ public class DocumentsController : ControllerBase
                 r.FileName,
                 r.RawText,
                 r.AnalyzedAt,
-                r.SignatureImage,
                 r.TableBlocksJson,
                 r.DocumentType,
                 PageCount = r.Pages.Count,
+                Signatures = r.Signatures.Select(s => new SignatureDto
+                {
+                    Id         = s.Id,
+                    ImageData  = Convert.ToBase64String(s.ImageData),
+                    Label      = s.Label,
+                    CapturedAt = s.CapturedAt,
+                }).ToList(),
                 Fields = r.Fields.Select(f => new ExtractedFieldDto
                 {
                     PropertyName   = f.PropertyName,
@@ -494,15 +512,13 @@ public class DocumentsController : ControllerBase
 
         var dto = new AnalysisResultDetailDto
         {
-            DocumentId     = raw.Id,
-            FileName       = raw.FileName,
-            RawText        = raw.RawText,
-            AnalyzedAt     = raw.AnalyzedAt,
-            DocumentType   = raw.DocumentType,
-            PageCount      = raw.PageCount,
-            SignatureImage = raw.SignatureImage is not null
-                               ? Convert.ToBase64String(raw.SignatureImage)
-                               : null,
+            DocumentId      = raw.Id,
+            FileName        = raw.FileName,
+            RawText         = raw.RawText,
+            AnalyzedAt      = raw.AnalyzedAt,
+            DocumentType    = raw.DocumentType,
+            PageCount       = raw.PageCount,
+            Signatures      = raw.Signatures,
             ExtractedFields = raw.Fields,
             TextBlocks      = raw.TextBlocks,
             TableBlocks     = tableBlocks,
@@ -595,13 +611,13 @@ public class DocumentsController : ControllerBase
         return File(docPage.ImageBytes, "image/jpeg");
     }
 
-    // ── PATCH /api/documents/{id}/signature ──────────────────────────────────
+    // ── POST /api/documents/{id}/signatures ──────────────────────────────────
 
-    [HttpPatch("{id:int}/signature")]
-    [ProducesResponseType(typeof(SignatureCaptureResponse), StatusCodes.Status200OK)]
+    [HttpPost("{id:int}/signatures")]
+    [ProducesResponseType(typeof(SignatureDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> CaptureSignature(
+    public async Task<IActionResult> AddSignature(
         int id,
         [FromBody] SignatureCaptureRequest request,
         CancellationToken ct)
@@ -619,20 +635,56 @@ public class DocumentsController : ControllerBase
             return BadRequest("imageData must be a valid base64 string.");
         }
 
-        var analysisResult = await _dbContext.AnalysisResults
-            .FirstOrDefaultAsync(r => r.Id == id, ct);
+        var exists = await _dbContext.AnalysisResults
+            .AnyAsync(r => r.Id == id, ct);
 
-        if (analysisResult is null)
+        if (!exists)
             return NotFound($"No analysis result found with id {id}.");
 
-        analysisResult.SignatureImage = imageBytes;
+        var sig = new DocumentSignature
+        {
+            AnalysisResultId = id,
+            ImageData        = imageBytes,
+            Label            = request.Label,
+            CapturedAt       = DateTime.UtcNow,
+        };
+
+        _dbContext.DocumentSignatures.Add(sig);
         await _dbContext.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "DocumentsController: signature captured for AnalysisResult.Id={Id} ({Bytes} bytes)",
-            id, imageBytes.Length);
+            "DocumentsController: signature added Id={SigId} for AnalysisResult.Id={DocId} ({Bytes} bytes)",
+            sig.Id, id, imageBytes.Length);
 
-        return Ok(new SignatureCaptureResponse { ImageData = request.ImageData });
+        return CreatedAtAction(nameof(GetById), new { id }, new SignatureDto
+        {
+            Id         = sig.Id,
+            ImageData  = request.ImageData,
+            Label      = sig.Label,
+            CapturedAt = sig.CapturedAt,
+        });
+    }
+
+    // ── DELETE /api/documents/{id}/signatures/{sigId} ────────────────────────
+
+    [HttpDelete("{id:int}/signatures/{sigId:int}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteSignature(int id, int sigId, CancellationToken ct)
+    {
+        var sig = await _dbContext.DocumentSignatures
+            .FirstOrDefaultAsync(s => s.Id == sigId && s.AnalysisResultId == id, ct);
+
+        if (sig is null)
+            return NotFound($"Signature {sigId} not found for document {id}.");
+
+        _dbContext.DocumentSignatures.Remove(sig);
+        await _dbContext.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "DocumentsController: signature Id={SigId} deleted from AnalysisResult.Id={DocId}", sigId, id);
+
+        return NoContent();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

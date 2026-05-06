@@ -53,6 +53,13 @@ export interface TableBlock {
   cells: TableCell[];
 }
 
+export interface SignatureDto {
+  id: number;
+  imageData: string; // base64
+  label: string | null;
+  capturedAt: string;
+}
+
 export interface AnalysisResultDetail {
   documentId: number;
   extractedFields: ExtractedField[];
@@ -61,7 +68,7 @@ export interface AnalysisResultDetail {
   fileName: string;
   documentType: string | null;
   textBlocks: OcrTextBlock[];
-  signatureImage: string | null;
+  signatures: SignatureDto[];
   pageCount: number;
   tableBlocks: TableBlock[];
 }

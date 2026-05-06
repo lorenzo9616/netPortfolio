@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import type { AnalysisResultDetail, SavedFieldUpdate } from '@/types/ocr';
-import { saveFieldOverrides, captureSignature, ApiError } from '@/lib/api';
+import type { AnalysisResultDetail, SavedFieldUpdate, SignatureDto } from '@/types/ocr';
+import { saveFieldOverrides, addSignature, deleteSignature, ApiError } from '@/lib/api';
 import SignatureCanvas from './SignatureCanvas';
 import OcrTokensTable from './OcrTokensTable';
 import BoundingBoxOverlay from './BoundingBoxOverlay';
@@ -42,9 +42,7 @@ export default function ResultsClient({ result }: Props) {
   const [saveError, setSaveError]     = useState('');
   const dismissTimerRef               = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [signatureImage, setSignatureImage] = useState<string | null>(
-    result.signatureImage ?? null,
-  );
+  const [signatures, setSignatures] = useState<SignatureDto[]>(result.signatures ?? []);
   const [isCapturing, setIsCapturing]   = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
 
@@ -100,8 +98,8 @@ export default function ResultsClient({ result }: Props) {
     setIsCapturing(true);
     setCaptureError(null);
     try {
-      const resp = await captureSignature(result.documentId, base64Png);
-      setSignatureImage(resp.imageData);
+      const sig = await addSignature(result.documentId, base64Png, 'Manual capture');
+      setSignatures((prev) => [...prev, sig]);
     } catch (err) {
       setCaptureError(
         err instanceof ApiError ? err.message
@@ -110,6 +108,16 @@ export default function ResultsClient({ result }: Props) {
       );
     } finally {
       setIsCapturing(false);
+    }
+  }
+
+  async function handleDeleteSignature(sigId: number) {
+    try {
+      await deleteSignature(result.documentId, sigId);
+      setSignatures((prev) => prev.filter((s) => s.id !== sigId));
+    } catch (err) {
+      // silently log — the signature stays in the list if delete fails
+      console.error('Failed to delete signature:', err);
     }
   }
 
@@ -185,8 +193,8 @@ export default function ResultsClient({ result }: Props) {
                           {field.propertyName}
                         </td>
                         <td className="px-4 py-3 text-gray-600">
-                          {isSignatureField && signatureImage
-                            ? <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">Auto-detected</span>
+                          {isSignatureField && signatures.length > 0
+                            ? <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">{signatures.length} captured</span>
                             : (field.extractedValue ?? <span className="italic text-gray-400">—</span>)
                           }
                         </td>
@@ -356,20 +364,41 @@ export default function ResultsClient({ result }: Props) {
               </dl>
             </div>
 
-            {/* Auto-detected signature preview */}
-            {signatureImage && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-200">
-                    Auto-detected
-                  </span>
-                  <span className="text-xs font-medium text-emerald-800">Signature</span>
+            {/* Signatures list */}
+            {signatures.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Signatures ({signatures.length})
+                </p>
+                <div className="flex flex-col gap-2">
+                  {signatures.map((sig) => (
+                    <div
+                      key={sig.id}
+                      className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2"
+                    >
+                      <img
+                        src={`data:image/jpeg;base64,${sig.imageData}`}
+                        alt={sig.label ?? 'Signature'}
+                        className="max-h-16 rounded border border-emerald-200 bg-white object-contain"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-200">
+                          {sig.label ?? 'Signature'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={`Delete signature ${sig.label ?? sig.id}`}
+                        onClick={() => handleDeleteSignature(sig.id)}
+                        className="shrink-0 rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-400"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
                 </div>
-                <img
-                  src={`data:image/jpeg;base64,${signatureImage}`}
-                  alt="Auto-detected signature"
-                  className="max-h-24 rounded border border-emerald-200 bg-white"
-                />
               </div>
             )}
 
@@ -416,9 +445,7 @@ export default function ResultsClient({ result }: Props) {
             {imageUrl && previewMode === 'capture' && (
               <div className="flex flex-col gap-2">
                 <p className="text-xs font-medium text-gray-500">
-                  {signatureImage
-                    ? 'Re-capture signature (draw a box over the signature area):'
-                    : 'Capture signature manually:'}
+                  Draw a box over a signature area to add it to the list:
                 </p>
                 <SignatureCanvas
                   imageUrl={imageUrl}

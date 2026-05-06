@@ -9,11 +9,12 @@ public class OcrDbContext : DbContext
     {
     }
 
-    public DbSet<OcrProperty>    OcrProperties   => Set<OcrProperty>();
-    public DbSet<AnalysisResult> AnalysisResults => Set<AnalysisResult>();
-    public DbSet<SavedField>     SavedFields      => Set<SavedField>();
-    public DbSet<SavedTextBlock> SavedTextBlocks  => Set<SavedTextBlock>();
-    public DbSet<DocumentPage>   DocumentPages    => Set<DocumentPage>();
+    public DbSet<OcrProperty>       OcrProperties       => Set<OcrProperty>();
+    public DbSet<AnalysisResult>    AnalysisResults     => Set<AnalysisResult>();
+    public DbSet<SavedField>        SavedFields         => Set<SavedField>();
+    public DbSet<SavedTextBlock>    SavedTextBlocks     => Set<SavedTextBlock>();
+    public DbSet<DocumentPage>      DocumentPages       => Set<DocumentPage>();
+    public DbSet<DocumentSignature> DocumentSignatures  => Set<DocumentSignature>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -55,7 +56,6 @@ public class OcrDbContext : DbContext
             entity.Property(e => e.RawText).IsRequired(false);
             entity.Property(e => e.AnalyzedAt).HasDefaultValueSql("NOW()");
             entity.Property(e => e.ImageBytes).IsRequired(false);
-            entity.Property(e => e.SignatureImage).IsRequired(false);
             entity.Property(e => e.TableBlocksJson).IsRequired(false);
 
             entity.Property(e => e.DocumentType)
@@ -76,6 +76,22 @@ public class OcrDbContext : DbContext
                   .WithOne(p => p.AnalysisResult)
                   .HasForeignKey(p => p.AnalysisResultId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(e => e.Signatures)
+                  .WithOne(s => s.AnalysisResult)
+                  .HasForeignKey(s => s.AnalysisResultId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── DocumentSignature ─────────────────────────────────────────────────
+        modelBuilder.Entity<DocumentSignature>(entity =>
+        {
+            entity.ToTable("document_signatures");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ImageData).IsRequired();
+            entity.Property(e => e.Label).HasMaxLength(100);
+            entity.Property(e => e.CapturedAt).HasDefaultValueSql("NOW()");
+            entity.HasIndex(e => e.AnalysisResultId);
         });
 
         // ── DocumentPage ──────────────────────────────────────────────────────
