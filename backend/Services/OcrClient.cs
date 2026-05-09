@@ -170,11 +170,22 @@ public class OcrClient : IOcrClient
 
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogError(
-                "OcrClient: OCR service returned {StatusCode} for extract-pages '{FileName}'",
-                (int)response.StatusCode, fileName);
+            int statusCode = (int)response.StatusCode;
+            if (statusCode >= 400 && statusCode < 500)
+            {
+                _logger.LogWarning(
+                    "OcrClient: OCR service returned 4xx status {StatusCode} for extract-pages '{FileName}'",
+                    statusCode, fileName);
+            }
+            else
+            {
+                _logger.LogError(
+                    "OcrClient: OCR service returned 5xx status {StatusCode} for extract-pages '{FileName}'",
+                    statusCode, fileName);
+            }
+
             throw new HttpRequestException(
-                $"OCR service responded with {(int)response.StatusCode}.",
+                $"OCR service responded with {statusCode}.",
                 inner: null,
                 statusCode: response.StatusCode);
         }
