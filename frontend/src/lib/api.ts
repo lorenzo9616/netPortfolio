@@ -162,11 +162,13 @@ export async function analyzeDocumentStream(
   file: File,
   crop: CropRegion | undefined,
   lang: string,
+  mode: 'ocr' | 'handwriting',
   onProgress: (message: string) => void,
 ): Promise<{ documentId: number }> {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('lang', lang);
+  formData.append('mode', mode);
   if (crop) {
     formData.append('cropX', String(crop.x));
     formData.append('cropY', String(crop.y));
