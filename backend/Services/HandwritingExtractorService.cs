@@ -120,8 +120,8 @@ public class HandwritingExtractorService : IHandwritingExtractorService
             request.Content = new StringContent(json, Encoding.UTF8, "application/json");
             request.Headers.Add("x-api-key", apiKey);
 
-            var response     = await client.SendAsync(request, ct);
-            var responseBody = await response.Content.ReadAsStringAsync(ct);
+            using var response = await client.SendAsync(request, ct);
+            var responseBody   = await response.Content.ReadAsStringAsync(ct);
 
             if (!response.IsSuccessStatusCode)
             {
