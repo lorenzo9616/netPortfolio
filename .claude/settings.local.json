@@ -165,7 +165,28 @@
       "Bash(ls -d .worktrees)",
       "Bash(ls -d worktrees)",
       "Bash(xargs grep *)",
-      "Bash(node_modules/.bin/tsc --noEmit)"
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(python -c \"from fpdf import FPDF; print\\('fpdf ok'\\)\")",
+      "Bash(Get-ChildItem -Path \"D:\\\\netProgress\\\\netPortfolio\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(New-Item -ItemType Directory -Force -Path \"D:\\\\netProgress\\\\netPortfolio\\\\docs\\\\superpowers\\\\plans\")",
+      "Bash(Out-Null)",
+      "Bash(docker-compose up *)",
+      "Bash(npm --version)",
+      "Bash(cat .gitignore)",
+      "Bash(cat backend/.gitignore)",
+      "PowerShell(git push *)",
+      "PowerShell($env:ANTHROPIC_API_KEY)",
+      "PowerShell([System.Environment]::GetEnvironmentVariable\\(\"ANTHROPIC_API_KEY\", \"User\"\\); [System.Environment]::GetEnvironmentVariable\\(\"ANTHROPIC_API_KEY\", \"Machine\"\\))",
+      "PowerShell(Invoke-RestMethod -Uri \"http://localhost:5000/health\" -Method Get 2>&1)",
+      "PowerShell(curl.exe -s -X POST \"http://localhost:5000/api/documents/analyze/stream\" -F \"file=@D:\\\\netProgress\\\\netPortfolio\\\\samples\\\\MCLARN TRT INVOICE 031626.pdf;type=application/pdf\" -F \"lang=eng\" --max-time 120 2>&1)",
+      "PowerShell(curl.exe -s \"http://localhost:5000/api/documents/13\" | python -m json.tool 2>&1)",
+      "PowerShell(curl.exe -s \"http://localhost:5000/api/documents/13\" 2>&1)",
+      "PowerShell($r = curl.exe -s \"http://localhost:5000/api/documents/13\" | ConvertFrom-Json; Write-Host \"documentType:\" $r.documentType; Write-Host \"fileName:\" $r.fileName; $filled = $r.extractedFields | Where-Object { $_.extractedValue }; Write-Host \"Filled fields \\($\\($filled.Count\\)\\):\"; $filled | ForEach-Object { \"  $\\($_.propertyName\\): $\\($_.extractedValue\\) \\(conf $\\($_.confidence\\)\\)\" })",
+      "Bash(Select-String -Pattern \"\\(Signature|signature\\)\" -List)",
+      "Bash(python -c \"import sys,json; props=json.load\\(sys.stdin\\); print\\(f'Total properties: {len\\(props\\)}'\\); [print\\(f'  {p[\\\\\"id\\\\\"]:>3}  {p[\\\\\"name\\\\\"]}'\\) for p in props if p['id'] >= 38]\")",
+      "WebSearch",
+      "Bash(findstr -i table)"
     ]
   }
 }

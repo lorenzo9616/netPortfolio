@@ -86,10 +86,16 @@ The coordinator for the entire upload page. Holds the state (which file is selec
 #### Results Page Components
 
 **`ResultsClient`**
-The coordinator for the results page. Shows the extracted fields table, handles the "Save Changes" button, and connects the signature canvas and OCR token table.
+The coordinator for the results page. Shows the extracted fields table, handles the "Save Changes" button, and switches between two modes for the document preview panel: **Word Overlay** (showing bounding boxes) and **Capture Signature** (drawing a crop region). Also renders the detected tables section.
+
+**`BoundingBoxOverlay`**
+A canvas layer drawn on top of the document image that highlights every word Tesseract found, colour-coded by confidence: green (≥80%), yellow (50–80%), red (<50%). Hovering over a box shows a tooltip with the word text and exact confidence percentage. Supports multi-page documents with Previous/Next page controls.
 
 **`SignatureCanvas`**
 Overlays a transparent drawing layer on top of the document image. The user clicks and drags to draw a rectangle around the signature. Once released, a green "Capture Signature" button appears. Clicking it crops the image at that region and sends it to the backend for storage. The Signature row in the table then switches from a text box to a thumbnail of the cropped image.
+
+**`TableBlocksView`**
+Renders tables detected from the OCR layout — each table shows its page number, row/column count, and the cell contents formatted as an HTML table. The first row is styled as a header.
 
 **`OcrTokensTable`**
 A scrollable table at the bottom of the results page that shows every single word Tesseract found in the document — the text, a colour-coded confidence score (green = high, yellow = medium, red = low), the page number, and the position on the page.
@@ -117,8 +123,9 @@ All calls to the backend are centralised in this one file. Each function has a s
 
 | Function | What it does |
 |---|---|
-| `analyzeDocument(file, crop?)` | Uploads a document file to the backend to start OCR analysis. Returns a document ID for the results page. |
-| `getAnalysisResult(id)` | Fetches the full analysis result (all extracted fields, text, image) for a given document ID. |
+| `analyzeDocumentStream(file, crop?, lang, onProgress)` | Uploads a document and receives live progress events (Server-Sent Events) as OCR runs. Calls `onProgress` for each step completed. Returns the document ID when done. |
+| `analyzeDocument(file, crop?)` | Single-shot upload without streaming — kept for non-streaming contexts. Returns a document ID. |
+| `getAnalysisResult(id)` | Fetches the full analysis result (all extracted fields, text, image, table blocks) for a given document ID. |
 | `saveFieldOverrides(documentId, fields)` | Sends the user's manual corrections back to the backend to be saved. |
 | `captureSignature(documentId, imageData)` | Sends a base64-encoded PNG crop of the signature region to the backend for permanent storage. |
 | `getProperties()` | Fetches the list of all data fields the system is configured to look for. |
@@ -163,7 +170,8 @@ The left-hand navigation bar visible on all pages. Contains links to Upload, Res
 | Endpoint | Action | Plain-English Description |
 |---|---|---|
 | `POST /api/documents/analyze` | Upload & analyze | Accepts a document file, sends it to the OCR Service, matches fields, stores everything, and returns extracted data. Limited to 10 uploads per minute. |
-| `GET /api/documents/{id}` | Fetch results | Returns the full analysis for a previously processed document: all fields, raw OCR text, token list, and any saved signature image. |
+| `POST /api/documents/analyze/stream` | Upload & analyze (streaming) | Same as above but streams live progress events (Server-Sent Events) as OCR runs — the browser sees step-by-step updates instead of waiting for the full response. Emits `status`, `done`, and `error` events. |
+| `GET /api/documents/{id}` | Fetch results | Returns the full analysis for a previously processed document: all fields, raw OCR text, token list, detected tables, and any saved signature image. |
 | `PUT /api/documents/{id}/fields` | Save edits | Saves the user's manual corrections to extracted field values. |
 | `GET /api/documents/{id}/image` | Get document image | Streams the original uploaded image back to the browser so it can be shown in the preview panel. |
 | `PATCH /api/documents/{id}/signature` | Save signature | Receives a cropped PNG image (as base64 text) and stores it as the document's signature. |
@@ -191,8 +199,9 @@ The left-hand navigation bar visible on all pages. Contains links to Upload, Res
 
 | Method | What it does |
 |---|---|
-| `Analyze` | Buffers the uploaded file, sends it to OCR, matches extracted text against active field rules, stores the result (including the raw image bytes and every OCR word token), and returns the document ID. |
-| `GetById` | Loads a saved analysis from the database and returns it as structured JSON — fields, text, signature image (as base64), and the full token list. |
+| `Analyze` | Buffers the uploaded file, sends it to OCR, matches extracted text against active field rules, stores the result (including the raw image bytes, every OCR word token, and any detected tables), and returns the document ID. |
+| `AnalyzeStream` | Same pipeline as `Analyze` but proxies the OCR service's SSE stream directly to the browser — the browser sees incremental progress steps. Emits `status` events while processing and a final `done` event with the document ID. |
+| `GetById` | Loads a saved analysis from the database and returns it as structured JSON — fields, text, signature image (as base64), the full token list, and detected table blocks. |
 | `UpdateFields` | Applies the user's manual override values to saved fields and returns the updated list. |
 | `GetImage` | Looks up the stored image bytes for a document and streams the original file back to the browser. |
 | `CaptureSignature` | Decodes the base64 PNG from the request, stores it as the signature for that document, and echoes it back. |
@@ -224,7 +233,8 @@ This is the logic that takes raw OCR text and finds the values corresponding to 
 
 | Method | What it does |
 |---|---|
-| `ExtractTextAsync` | Sends the document file (and optional crop region) to the Python OCR Service as a multipart upload and deserializes the response. |
+| `ExtractTextAsync` | Sends the document file (and optional crop region) to the Python OCR Service as a multipart upload and deserializes the full response. |
+| `ExtractTextStreamAsync` | Sends the same multipart upload but returns as soon as response headers arrive, leaving the body as a readable stream for the caller to proxy as SSE. |
 
 ---
 
@@ -252,7 +262,8 @@ This is the logic that takes raw OCR text and finds the values corresponding to 
 | Endpoint | Description |
 |---|---|
 | `GET /health` | Returns `{ "status": "ok" }`. Used by Docker health checks. |
-| `POST /extract-text` | Accepts an image or PDF file (up to 20 MB) plus an optional crop region, runs OCR, and returns every word found with confidence scores and positions. |
+| `POST /extract-text` | Accepts an image or PDF file (up to 20 MB) plus an optional crop region, runs OCR, and returns every word found with confidence scores and positions, plus any detected table blocks. |
+| `POST /extract-text-stream` | Same as `/extract-text` but streams Server-Sent Events in real time: one `status` event per processing step (decode, preprocess, OCR per page, signature detection, table detection), then a `complete` event with the full JSON payload, or an `error` event on failure. |
 
 ### Python Functions
 
@@ -261,7 +272,9 @@ This is the logic that takes raw OCR text and finds the values corresponding to 
 | Function | What it does |
 |---|---|
 | `health()` | Returns a simple OK response so the system knows the service is running. |
-| `extract_text(file, crop_x, crop_y, crop_width, crop_height)` | The main endpoint. Validates the file type and size, decodes it into images (one per page for PDFs), applies the optional crop region, runs OCR on each page, and assembles the full response. |
+| `extract_text(file, crop_x, crop_y, crop_width, crop_height)` | The main endpoint. Validates the file type and size, decodes it into images (one per page for PDFs), applies the optional crop region, runs OCR on each page, detects tables, and assembles the full response. |
+| `extract_text_stream(file, ...)` | SSE streaming endpoint. Runs the same OCR pipeline but yields a `status` event after each step so the browser can show live progress. Wraps all blocking calls in `asyncio.to_thread` to keep the async event loop free. |
+| `_sse(event, data)` | Helper that formats one Server-Sent Event string (`event: ...\ndata: ...\n\n`). |
 | `MaxBodySizeMiddleware.dispatch` | A gatekeeper that rejects files larger than 20 MB before any processing begins, protecting the server from being overloaded. |
 
 #### `extractor.py` — runs Tesseract
@@ -283,6 +296,12 @@ This is the logic that takes raw OCR text and finds the values corresponding to 
 |---|---|
 | `pdf_to_images(file_bytes, dpi)` | Takes the raw bytes of a PDF file and converts every page into an image at 200 DPI (a quality level that balances accuracy with processing speed). Returns a list of images ready for OCR. |
 
+#### `table_detector.py` — finds tabular structure in OCR output
+
+| Function | What it does |
+|---|---|
+| `detect_tables(blocks, page)` | Takes the OCR word blocks for one page and returns a list of detected tables using pure positional analysis — no image processing required. Groups words into rows by vertical proximity, then identifies columns by horizontal gaps. Only groups with ≥ 2 rows and ≥ 2 columns are returned. |
+
 #### `models.py` — data structures
 
 These define the exact shape of data flowing in and out of the service. Non-technical analogy: these are the standard form templates every response must follow.
@@ -291,7 +310,9 @@ These define the exact shape of data flowing in and out of the service. Non-tech
 |---|---|---|
 | `BoundingBox` | x, y, width, height | The pixel rectangle surrounding a single word in the document |
 | `TextBlock` | text, confidence, bounding_box, page | One recognised word: what it says, how confident the engine is, where it appears |
-| `ExtractTextResponse` | success, page_count, text_blocks, raw_text, processing_time_ms | The full response from one OCR job |
+| `TableCell` | row, col, text, bounding_box | One cell inside a detected table |
+| `TableBlock` | page, rows, cols, cells, bounding_box | One detected table: its location on the page and all its cell contents |
+| `ExtractTextResponse` | success, page_count, text_blocks, raw_text, table_blocks, signature_image, processing_time_ms | The full response from one OCR job |
 | `HealthResponse` | status | Simple liveness response |
 
 ---
@@ -307,7 +328,7 @@ These define the exact shape of data flowing in and out of the service. Non-tech
 | Table | What it stores |
 |---|---|
 | `ocr_properties` | The list of data fields to extract (e.g. InvoiceNumber, DateOfBirth). Pre-loaded with 20 fields across Billing, Legal, and Hospital categories. |
-| `analysis_results` | One row per uploaded document: the filename, raw OCR text, the original image bytes, and any saved signature image. |
+| `analysis_results` | One row per uploaded document: the filename, raw OCR text, the original image bytes, any saved signature image, and a JSON column storing detected table blocks. |
 | `saved_fields` | One row per extracted field per document: the field name, the value OCR found, the user's manual correction (if any), and a confidence score. |
 | `saved_text_blocks` | One row per word found by Tesseract: the text, confidence score, page number, and pixel position. Powers the Raw OCR Tokens table on the results page. |
 
@@ -361,4 +382,52 @@ Once running, the application is available at:
 
 ---
 
-*Last updated: 2026-04-29*
+---
+
+## Session 11 Additions (2026-05-05)
+
+Three new capabilities were added in this session:
+
+### 1 — Word-Level Bounding Box Overlay
+
+The document preview panel on the results page now has a toggle between **Word Overlay** mode and **Capture Signature** mode.
+
+In overlay mode, a canvas is drawn on top of the document image showing every word Tesseract recognised, colour-coded:
+- **Green** — confidence ≥ 80% (reliable)
+- **Yellow** — confidence 50–79% (marginal)
+- **Red** — confidence < 50% (low confidence)
+
+Hovering over any box shows a tooltip with the exact word and confidence percentage. Multi-page documents show Previous/Next controls.
+
+New component: `frontend/src/components/results/BoundingBoxOverlay.tsx`
+
+### 2 — Table Structure Detection
+
+The OCR service now analyses the positional layout of word blocks on each page to find tables — rows and columns of aligned text — without any additional image processing.
+
+Detected tables are stored in a `table_blocks_json` column in the `analysis_results` database table and displayed in a new **Detected Tables** section on the results page, below the OCR tokens table.
+
+New files:
+- `ocr-service/table_detector.py` — pure positional table detection
+- `frontend/src/components/results/TableBlocksView.tsx` — renders detected tables as HTML tables
+- `backend/Migrations/20260505000000_AddTableBlocksJson.cs` — database migration
+
+### 3 — Real-Time Analysis Progress (Server-Sent Events)
+
+When the user clicks "Analyze Document", instead of a spinner the upload page now shows a live step-by-step progress list:
+
+> ✓ Decoding document…  
+> ✓ Preprocessing image…  
+> ✓ Running OCR on page 1…  
+> ⟳ Processing…
+
+This is implemented end-to-end with Server-Sent Events (SSE):
+- **OCR service** (`/extract-text-stream`) yields a `status` event after each step using `asyncio.to_thread` for blocking calls
+- **Backend** (`POST /api/documents/analyze/stream`) proxies the OCR stream and emits `done` with the document ID when complete
+- **Frontend** (`api.ts` → `analyzeDocumentStream`) reads the stream with `fetch()` + `ReadableStream` and calls an `onProgress` callback for each step
+
+**Note:** To apply the database migration, run `dotnet ef database update` inside the `backend/` directory.
+
+---
+
+*Last updated: 2026-05-05*

@@ -64,6 +64,7 @@ public record ClassificationResult(
 - System prompt instructs Claude to return valid JSON only
 - Prompt asks for document type and a list of suggested extraction properties (name, dataType, searchHeuristic, isRegex)
 - Response is deserialized; on parse failure the service returns an empty result with `DocumentType = "Unknown"` — analysis continues unaffected
+- Requires `ANTHROPIC_API_KEY` environment variable set in the backend (via `appsettings.json` or environment); service reads it via `IConfiguration`
 
 **Integration point in `DocumentsController.cs` / `OcrService.cs`:**
 
