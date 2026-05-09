@@ -24,7 +24,7 @@ from starlette.requests import Request as StarletteRequest
 from starlette.responses import Response
 
 from extractor import extract_from_image
-from models import ExtractTextResponse, HealthResponse, TextBlock
+from models import ExtractPagesResponse, ExtractTextResponse, HealthResponse, TextBlock
 from pdf_handler import pdf_to_images
 from signature_detector import detect_signature
 from table_detector import detect_tables
@@ -81,6 +81,46 @@ def _sse(event: str, data: dict) -> str:
 async def health() -> HealthResponse:
     """Return a simple liveness response so orchestrators can probe the service."""
     return HealthResponse(status="ok")
+
+
+@app.post("/extract-pages", response_model=ExtractPagesResponse)
+async def extract_pages(
+    file: UploadFile = File(...),
+) -> ExtractPagesResponse:
+    """Convert an uploaded image or PDF to page images without running OCR.
+
+    Returns base64 JPEG images for each page. Used by the .NET backend when
+    handwriting mode is active — it calls this endpoint to get page images,
+    then sends each to Claude Vision for transcription.
+    """
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=(
+                f"Unsupported media type '{file.content_type}'. "
+                f"Allowed: {', '.join(sorted(ALLOWED_CONTENT_TYPES))}"
+            ),
+        )
+
+    file_bytes: bytes = await file.read()
+
+    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File size {len(file_bytes)} bytes exceeds the {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB limit.",
+        )
+
+    if file.content_type == "application/pdf":
+        images: list = await asyncio.to_thread(pdf_to_images, file_bytes)
+    else:
+        pil_image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+        images = [np.array(pil_image)]
+
+    page_images: list[str] = await asyncio.to_thread(
+        lambda: [_encode_page_image(img) for img in images]
+    )
+
+    return ExtractPagesResponse(page_count=len(images), page_images=page_images)
 
 
 @app.post("/extract-text", response_model=ExtractTextResponse)
