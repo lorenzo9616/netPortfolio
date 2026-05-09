@@ -110,11 +110,18 @@ async def extract_pages(
             detail=f"File size {len(file_bytes)} bytes exceeds the {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB limit.",
         )
 
-    if file.content_type == "application/pdf":
-        images: list = await asyncio.to_thread(pdf_to_images, file_bytes)
-    else:
-        pil_image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
-        images = [np.array(pil_image)]
+    try:
+        if file.content_type == "application/pdf":
+            images: list = await asyncio.to_thread(pdf_to_images, file_bytes)
+        else:
+            pil_image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+            images = [np.array(pil_image)]
+    except (ValueError, Exception) as exc:
+        logger.warning("extract_pages: failed to decode file '%s': %s", file.filename, exc)
+        raise HTTPException(
+            status_code=422,
+            detail=f"Could not decode file: {exc}",
+        )
 
     page_images: list[str] = await asyncio.to_thread(
         lambda: [_encode_page_image(img) for img in images]
