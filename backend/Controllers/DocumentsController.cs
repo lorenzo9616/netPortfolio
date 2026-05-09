@@ -33,6 +33,7 @@ public class DocumentsController : ControllerBase
     private readonly IOcrPropertyRepository _propertyRepository;
     private readonly OcrDbContext _dbContext;
     private readonly ILogger<DocumentsController> _logger;
+    private readonly IHandwritingExtractorService _handwritingService;
 
     public DocumentsController(
         IOcrClient ocrClient,
@@ -40,7 +41,8 @@ public class DocumentsController : ControllerBase
         IDocumentClassifierService classifierService,
         IOcrPropertyRepository propertyRepository,
         OcrDbContext dbContext,
-        ILogger<DocumentsController> logger)
+        ILogger<DocumentsController> logger,
+        IHandwritingExtractorService handwritingService)
     {
         _ocrClient          = ocrClient;
         _fieldMatcher       = fieldMatcher;
@@ -48,6 +50,7 @@ public class DocumentsController : ControllerBase
         _propertyRepository = propertyRepository;
         _dbContext          = dbContext;
         _logger             = logger;
+        _handwritingService = handwritingService;
     }
 
     // ── GET /api/documents ───────────────────────────────────────────────────
@@ -282,6 +285,88 @@ public class DocumentsController : ControllerBase
 
             var dbProperties     = await _propertyRepository.GetAllAsync();
             var activeProperties = dbProperties.Where(p => p.IsActive).ToList();
+
+            // ── Handwriting / ICR path ───────────────────────────────────────────
+            if (string.Equals(request.Mode, "handwriting", StringComparison.OrdinalIgnoreCase))
+            {
+                await WriteEventAsync("status", new { step = "handwriting", message = "Sending pages to Claude Vision..." });
+
+                var hwResult = await _handwritingService.ExtractAsync(fileBytes, file.FileName, contentType, ct);
+
+                await WriteEventAsync("status", new { step = "handwriting", message = $"Transcription complete — {hwResult.PageCount} page(s)" });
+                await WriteEventAsync("status", new { step = "classifying", message = "Classifying document type with AI..." });
+
+                var classification = await _classifierService.ClassifyAsync(hwResult.RawText, ct);
+
+                var existingNames  = new HashSet<string>(activeProperties.Select(p => p.Name), StringComparer.OrdinalIgnoreCase);
+                var tempProperties = classification.SuggestedProperties
+                    .Where(sp => !existingNames.Contains(sp.Name))
+                    .Select(sp => new OcrProperty
+                    {
+                        Id              = 0,
+                        Name            = sp.Name,
+                        DataType        = sp.DataType,
+                        SearchHeuristic = sp.SearchHeuristic,
+                        IsRegex         = sp.IsRegex,
+                        IsActive        = true,
+                        CreatedAt       = DateTime.UtcNow,
+                        UpdatedAt       = DateTime.UtcNow,
+                    })
+                    .ToList();
+
+                if (classification.DocumentType != "Unknown" || tempProperties.Count > 0)
+                {
+                    var typeLabel = classification.DocumentType == "Unknown"
+                        ? "Document type detected"
+                        : $"{classification.DocumentType} detected";
+                    var suffix = tempProperties.Count > 0
+                        ? $" — adding {tempProperties.Count} additional {(tempProperties.Count == 1 ? "field" : "fields")}"
+                        : string.Empty;
+                    await WriteEventAsync("status", new { step = "type_detected", message = $"{typeLabel}{suffix}" });
+                }
+
+                await WriteEventAsync("status", new { step = "saving", message = "Saving results to database" });
+
+                var allProperties   = activeProperties.Concat(tempProperties);
+                var extractedFields = _fieldMatcher.MatchFields(allProperties, hwResult.RawText);
+
+                var analysisResult = new AnalysisResult
+                {
+                    FileName     = file.FileName,
+                    RawText      = hwResult.RawText,
+                    AnalyzedAt   = DateTime.UtcNow,
+                    ImageBytes   = fileBytes,
+                    DocumentType = classification.DocumentType,
+                    Fields       = extractedFields.Select(f => new SavedField
+                    {
+                        PropertyName   = f.PropertyName,
+                        ExtractedValue = f.ExtractedValue,
+                        Confidence     = f.Confidence,
+                    }).ToList(),
+                    TextBlocks = [],
+                };
+
+                for (int i = 0; i < hwResult.PageImages.Count; i++)
+                {
+                    if (!string.IsNullOrEmpty(hwResult.PageImages[i]))
+                    {
+                        analysisResult.Pages.Add(new DocumentPage
+                        {
+                            PageNumber = i + 1,
+                            ImageBytes = Convert.FromBase64String(hwResult.PageImages[i]),
+                        });
+                    }
+                }
+
+                _dbContext.AnalysisResults.Add(analysisResult);
+                await _dbContext.SaveChangesAsync(ct);
+
+                _logger.LogInformation("AnalyzeStream[handwriting]: saved AnalysisResult.Id={Id}", analysisResult.Id);
+
+                await WriteEventAsync("done", new { documentId = analysisResult.Id });
+                return;
+            }
+            // ── End handwriting path — fall through to Tesseract OCR path below ──
 
             using var ocrResponse = await _ocrClient.ExtractTextStreamAsync(
                 new MemoryStream(fileBytes),

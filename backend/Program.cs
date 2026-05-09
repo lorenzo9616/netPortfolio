@@ -38,6 +38,7 @@ builder.Services.AddHttpClient<IOcrClient, OcrClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(120);
 });
 builder.Services.AddSingleton<IFieldMatcher, FieldMatcher>();
+builder.Services.AddScoped<IHandwritingExtractorService, HandwritingExtractorService>();
 builder.Services.AddHttpClient("anthropic", client =>
 {
     client.BaseAddress = new Uri("https://api.anthropic.com");
