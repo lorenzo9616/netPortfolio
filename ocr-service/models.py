@@ -51,3 +51,8 @@ class ExtractTextResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+class ExtractPagesResponse(BaseModel):
+    page_count: int
+    page_images: list[str]  # base64 JPEG strings, one per page
