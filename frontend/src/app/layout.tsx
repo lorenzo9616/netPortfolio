@@ -5,6 +5,11 @@ import Sidebar from '@/components/Sidebar';
 export const metadata: Metadata = {
   title: 'OpenOCR',
   description: 'Open-source OCR document processing system',
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
 };
 
 export default function RootLayout({

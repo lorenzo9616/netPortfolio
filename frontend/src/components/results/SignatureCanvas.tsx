@@ -122,7 +122,7 @@ export default function SignatureCanvas({
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-gray-500">
-          Draw a box over the signature area, then click <strong>Capture Signature</strong>.
+          Draw a box over the signature, then click <strong>Capture</strong>.
         </p>
         {showPageNav && (
           <div className="flex shrink-0 items-center gap-1">
