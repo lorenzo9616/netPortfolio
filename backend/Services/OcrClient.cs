@@ -102,4 +102,43 @@ public class OcrClient : IOcrClient
 
         return result;
     }
+
+    public async Task<HttpResponseMessage> ExtractTextStreamAsync(
+        Stream fileStream,
+        string fileName,
+        string contentType,
+        int? cropX,
+        int? cropY,
+        int? cropWidth,
+        int? cropHeight,
+        string lang = "eng",
+        CancellationToken ct = default)
+    {
+        _logger.LogInformation(
+            "OcrClient: starting ExtractTextStreamAsync for file '{FileName}' ({ContentType})",
+            fileName, contentType);
+
+        var multipart   = new MultipartFormDataContent();
+        var fileContent = new StreamContent(fileStream);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        multipart.Add(fileContent, "file", fileName);
+        multipart.Add(new StringContent(lang), "lang");
+
+        if (cropX.HasValue && cropY.HasValue && cropWidth.HasValue && cropHeight.HasValue)
+        {
+            multipart.Add(new StringContent(cropX.Value.ToString()),      "crop_x");
+            multipart.Add(new StringContent(cropY.Value.ToString()),      "crop_y");
+            multipart.Add(new StringContent(cropWidth.Value.ToString()),  "crop_width");
+            multipart.Add(new StringContent(cropHeight.Value.ToString()), "crop_height");
+        }
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "/extract-text-stream")
+        {
+            Content = multipart,
+        };
+
+        // ResponseHeadersRead: HttpClient returns as soon as response headers arrive,
+        // body is streamed by the caller.  Timeout applies only to the header phase.
+        return await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+    }
 }
