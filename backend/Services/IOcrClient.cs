@@ -25,4 +25,10 @@ public interface IOcrClient
         int? cropHeight,
         string lang = "eng",
         CancellationToken ct = default);
+
+    Task<ExtractPagesResponse> ExtractPagesAsync(
+        Stream fileStream,
+        string fileName,
+        string contentType,
+        CancellationToken ct = default);
 }

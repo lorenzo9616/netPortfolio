@@ -141,4 +141,50 @@ public class OcrClient : IOcrClient
         // body is streamed by the caller.  Timeout applies only to the header phase.
         return await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
     }
+
+    public async Task<ExtractPagesResponse> ExtractPagesAsync(
+        Stream fileStream,
+        string fileName,
+        string contentType,
+        CancellationToken ct = default)
+    {
+        _logger.LogInformation(
+            "OcrClient: starting ExtractPagesAsync for file '{FileName}' ({ContentType})",
+            fileName, contentType);
+
+        using var multipart  = new MultipartFormDataContent();
+        var fileContent      = new StreamContent(fileStream);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        multipart.Add(fileContent, "file", fileName);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.PostAsync("/extract-pages", multipart, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "OcrClient: network error reaching OCR service (extract-pages)");
+            throw;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogError(
+                "OcrClient: OCR service returned {StatusCode} for extract-pages '{FileName}'",
+                (int)response.StatusCode, fileName);
+            throw new HttpRequestException(
+                $"OCR service responded with {(int)response.StatusCode}.",
+                inner: null,
+                statusCode: response.StatusCode);
+        }
+
+        var result = await response.Content.ReadFromJsonAsync<ExtractPagesResponse>(_jsonOptions, ct)
+            ?? throw new InvalidOperationException("OCR service returned an empty response for extract-pages.");
+
+        _logger.LogInformation(
+            "OcrClient: ExtractPagesAsync complete — {PageCount} page(s)", result.PageCount);
+
+        return result;
+    }
 }
