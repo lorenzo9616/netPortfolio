@@ -9,6 +9,7 @@ public class AnalyzeDocumentRequest
     public int? CropWidth { get; set; }
     public int? CropHeight { get; set; }
     public string Lang { get; set; } = "eng";
+    public string Mode { get; set; } = "ocr";
 }
 
 // ── OCR engine response types (deserialized from Python service) ─────────────
@@ -56,6 +57,19 @@ public class ExtractTextResponse
     public List<string> PageImages { get; set; } = new();
     public string? SignatureImage { get; set; }
     public List<OcrTableBlock> TableBlocks { get; set; } = new();
+}
+
+public class ExtractPagesResponse
+{
+    public int PageCount { get; set; }
+    public List<string> PageImages { get; set; } = new();
+}
+
+public class HandwritingExtractionResult
+{
+    public string RawText { get; set; } = string.Empty;
+    public List<string> PageImages { get; set; } = new();
+    public int PageCount { get; set; }
 }
 
 // ── Field extraction types ────────────────────────────────────────────────────
