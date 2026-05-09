@@ -18,13 +18,19 @@ public class FieldMatcher : IFieldMatcher
     public List<ExtractedField> MatchFields(
         IEnumerable<OcrProperty> properties,
         ExtractTextResponse ocrResult)
-    {
-        var rawText = ReconstructText(ocrResult);
-        var results = new List<ExtractedField>();
+        => MatchFieldsCore(properties, ReconstructText(ocrResult));
 
+    public List<ExtractedField> MatchFields(
+        IEnumerable<OcrProperty> properties,
+        string rawText)
+        => MatchFieldsCore(properties, rawText);
+
+    private static List<ExtractedField> MatchFieldsCore(
+        IEnumerable<OcrProperty> properties, string rawText)
+    {
+        var results = new List<ExtractedField>();
         foreach (var property in properties)
             results.Add(MatchSingleField(property, rawText));
-
         return results;
     }
 
