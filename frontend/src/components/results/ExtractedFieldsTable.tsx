@@ -42,7 +42,10 @@ export default function ExtractedFieldsTable({
 
   function renderRow(field: ExtractedFieldDto) {
     const isSignature  = field.propertyName === 'Signature';
-    const displayValue = overrides[field.propertyName] || field.extractedValue;
+    const displayValue =
+      overrides[field.propertyName] !== undefined
+        ? overrides[field.propertyName]
+        : field.extractedValue;
     const isEditing    = editingField === field.propertyName;
 
     return (
@@ -58,8 +61,14 @@ export default function ExtractedFieldsTable({
         {/* Value — click to edit (except Signature) */}
         <td
           className={`px-4 py-3 font-medium text-gray-800 ${!isSignature ? 'cursor-text' : ''}`}
+          tabIndex={isSignature ? undefined : 0}
+          role={isSignature ? undefined : 'button'}
           onClick={() => {
             if (!isSignature && !isSaving) setEditingField(field.propertyName);
+          }}
+          onKeyDown={(e) => {
+            if (!isSignature && !isSaving && (e.key === 'Enter' || e.key === ' '))
+              setEditingField(field.propertyName);
           }}
         >
           {isSignature ? (
